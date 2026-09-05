@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<meta name="theme-color" content="#1F4E78">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Lead Form</title>
+<style>
+  :root{
+    --navy:#1F4E78; --navy-dark:#153955; --amber:#E2790E; --amber-dark:#C4650A;
+    --bg:#EEF2F6; --card:#FFFFFF; --text:#1A2530; --muted:#7C8B99; --line:#E3E9EF;
+    --ok:#2E7D32; --err:#C62828; --wa:#25D366;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:Arial,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+  header{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dark) 100%);color:#fff;padding:26px 20px 46px;position:relative;}
+  header .tag{font-size:12.5px;letter-spacing:.03em;color:#BFD4E6;margin-bottom:6px;font-weight:600;}
+  header h1{margin:0 0 16px;font-size:23px;font-weight:800;}
+  .tabs{display:flex;gap:8px;}
+  .tab-btn{flex:1;padding:10px;border-radius:9px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:14px;font-weight:700;cursor:pointer;}
+  .tab-btn.active{background:#fff;color:var(--navy-dark);}
+  .logout-btn{position:absolute;top:22px;right:20px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;}
+  main{max-width:480px;margin:-26px auto 0;padding:0 16px 110px;position:relative;}
+  .card{background:var(--card);border-radius:16px;padding:20px 18px;box-shadow:0 8px 24px rgba(20,40,60,.10);margin-bottom:16px;}
+  .section-title{font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:.04em;margin:18px 0 10px;}
+  .section-title:first-child{margin-top:0;}
+  .field{margin-bottom:15px;}
+  .field label{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--navy-dark);margin-bottom:6px;}
+  .field .req{color:var(--amber-dark);font-weight:700;}
+  input,select,textarea{width:100%;padding:12.5px 13px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:#FBFCFD;color:var(--text);font-family:inherit;}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--navy);background:#fff;}
+  textarea{min-height:64px;resize:vertical;}
+  .row2{display:flex;gap:10px;}
+  .row2 .field{flex:1;}
+  .footer-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -4px 14px rgba(20,40,60,.06);}
+  .footer-bar-inner{max-width:480px;margin:0 auto;}
+  button#submitBtn{width:100%;padding:15px;font-size:16.5px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--amber) 0%,var(--amber-dark) 100%);border:none;border-radius:11px;cursor:pointer;box-shadow:0 4px 12px rgba(226,121,14,.35);}
+  button#submitBtn:disabled{background:#C9CDD2;box-shadow:none;}
+  #status{margin-top:12px;font-size:14px;text-align:center;min-height:18px;}
+  #status.ok{color:var(--ok);font-weight:700;}
+  #status.err{color:var(--err);font-weight:700;}
+  #waBtn{display:none;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:11px;background:var(--wa);color:#fff;text-decoration:none;font-weight:700;font-size:15px;margin-top:14px;}
+  .hidden{display:none !important;}
+  .lead-card{border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:10px;}
+  .lead-card.is-new{border-color:var(--amber);background:#FFF8EF;}
+  .lead-card .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
+  .lead-card .cname{font-weight:800;font-size:15px;}
+  .lead-card .badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px;background:var(--navy);color:#fff;}
+  .lead-card .badge.new{background:var(--amber);}
+  .lead-card .meta{font-size:13px;color:var(--muted);margin-bottom:2px;}
+  .lead-actions{margin-top:10px;}
+  .lead-actions .row2{margin-bottom:8px;}
+  .lead-actions select, .lead-actions textarea{font-size:13.5px;}
+  .lead-actions textarea{min-height:50px;margin-bottom:8px;}
+  .lead-update-btn{width:100%;padding:10px;border:none;border-radius:8px;background:var(--navy);color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;}
+  .lead-msg{font-size:12px;margin-top:6px;font-weight:700;}
+  .lead-msg.ok{color:var(--ok);}
+  .lead-msg.err{color:var(--err);}
+  .summary-bar{display:flex;gap:10px;margin-bottom:14px;}
+  .summary-box{flex:1;background:var(--navy);color:#fff;border-radius:12px;padding:14px;text-align:center;}
+  .summary-box .num{font-size:22px;font-weight:800;}
+  .summary-box .lbl{font-size:11.5px;color:#BFD4E6;}
+  .summary-box.amber{background:linear-gradient(135deg,var(--amber),var(--amber-dark));}
+  .summary-box.amber .lbl{color:#FFE6C7;}
+
+  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dark) 100%);}
+  .login-card{background:#fff;border-radius:18px;padding:32px 24px;max-width:380px;width:100%;box-shadow:0 12px 30px rgba(0,0,0,.25);}
+  .login-card h2{margin:0 0 4px;font-size:21px;font-weight:800;color:var(--navy-dark);}
+  .login-card p{margin:0 0 22px;font-size:13.5px;color:var(--muted);}
+  .login-btn{width:100%;padding:14px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--amber) 0%,var(--amber-dark) 100%);border:none;border-radius:10px;cursor:pointer;margin-top:6px;}
+  .login-btn:disabled{background:#C9CDD2;}
+  #loginMsg{margin-top:12px;font-size:13.5px;text-align:center;color:var(--err);font-weight:700;min-height:16px;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <h2>Lead Form Login</h2>
+    <p>Enter your Login ID and Password to continue.</p>
+    <div class="field">
+      <label>Login ID</label>
+      <input type="text" id="loginId" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="loginPass" autocomplete="current-password">
+    </div>
+    <button type="button" class="login-btn" id="loginBtn">Login</button>
+    <div id="loginMsg"></div>
+  </div>
+</div>
+
+<div id="appScreen" class="hidden">
+<header>
+  <button type="button" class="logout-btn" id="logoutBtn">Logout</button>
+  <div class="tag">RPGH &middot; LEAD CAPTURE</div>
+  <h1 id="pageTitle">Lead Form</h1>
+  <div class="tabs">
+    <button type="button" class="tab-btn active" id="tabFormBtn">New Lead</button>
+    <button type="button" class="tab-btn" id="tabDashBtn">My Dashboard</button>
+  </div>
+</header>
+<main>
+
+  <section id="formSection">
+    <div class="card">
+      <form id="leadForm">
+        <div class="section-title">Customer Details</div>
+        <div class="field">
+          <label>Customer Name <span class="req">*</span></label>
+          <input type="text" id="name" required>
+        </div>
+        <div class="field">
+          <label>Phone Number <span class="req">*</span></label>
+          <input type="tel" id="phone" inputmode="numeric" required>
+        </div>
+        <div class="field">
+          <label>Lead Source</label>
+          <select id="source">
+            <option value="Walk-in">Walk-in</option>
+            <option value="Phone">Phone</option>
+            <option value="WhatsApp" selected>WhatsApp</option>
+            <option value="Website">Website</option>
+            <option value="Referral">Referral</option>
+            <option value="Social Media">Social Media</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        <div class="section-title">Product Details</div>
+        <div class="field">
+          <label>Product / Item</label>
+          <select id="product">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Product Description</label>
+          <textarea id="productDesc" placeholder="Additional details about the item..."></textarea>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>Expected Value (Rs.)</label>
+            <input type="number" id="value" inputmode="numeric" placeholder="0">
+          </div>
+          <div class="field">
+            <label>Assign To</label>
+            <select id="assignedTo">
+              <option value="">Loading...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section-title">Additional Notes</div>
+        <div class="field">
+          <textarea id="notes" placeholder="Any additional information..."></textarea>
+        </div>
+      </form>
+      <div id="status"></div>
+      <a href="#" id="waBtn" target="_blank">Send WhatsApp to Customer</a>
+    </div>
+  </section>
+
+  <section id="dashSection" class="hidden">
+    <div id="dashSummary"></div>
+    <div id="dashList"></div>
+  </section>
+
+</main>
+<div class="footer-bar" id="footerBar">
+  <div class="footer-bar-inner">
+    <button id="submitBtn" type="submit" form="leadForm">Save Lead</button>
+  </div>
+</div>
+</div>
+
+<script>
+  // ===== SETUP: paste your Apps Script Web App URL here =====
+  const API_URL = "https://script.google.com/macros/s/AKfycby2tFki3btFpq_Fet7LqDg3_SZYBy0n_mn9miD7u7iuCKjA-n-7linIzM6R4f09Ftct/exec";
+  // ============================================================
+
+  async function apiCall(action, data){
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: action, data: data || {} })
+    });
+    return await res.json();
+  }
+
+  const loginScreen = document.getElementById('loginScreen');
+  const appScreen = document.getElementById('appScreen');
+  const loginId = document.getElementById('loginId');
+  const loginPass = document.getElementById('loginPass');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginMsg = document.getElementById('loginMsg');
+  const logoutBtn = document.getElementById('logoutBtn');
+  let currentUser = null;
+
+  function showApp(user){
+    currentUser = user;
+    loginScreen.classList.add('hidden');
+    appScreen.classList.remove('hidden');
+    initApp();
+    loadDashboard();
+  }
+
+  async function doLogin(){
+    const id = loginId.value.trim();
+    const pass = loginPass.value.trim();
+    if (!id || !pass) {
+      loginMsg.textContent = 'Please enter both Login ID and Password.';
+      return;
+    }
+    loginBtn.disabled = true;
+    loginBtn.textContent = 'Checking...';
+    loginMsg.textContent = '';
+    try {
+      const res = await apiCall('checkLogin', { loginId: id, password: pass });
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Login';
+      if (res.status === 'success') {
+        localStorage.setItem('leadapp_user', JSON.stringify(res));
+        showApp(res);
+      } else {
+        loginMsg.textContent = res.message;
+      }
+    } catch (err) {
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Login';
+      loginMsg.textContent = 'Network error: ' + err.message;
+    }
+  }
+
+  loginBtn.addEventListener('click', doLogin);
+  loginPass.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
+
+  logoutBtn.addEventListener('click', function(){
+    localStorage.removeItem('leadapp_user');
+    currentUser = null;
+    appScreen.classList.add('hidden');
+    loginScreen.classList.remove('hidden');
+    loginId.value = '';
+    loginPass.value = '';
+  });
+
+  const saved = localStorage.getItem('leadapp_user');
+  if (saved) {
+    try { showApp(JSON.parse(saved)); } catch (e) {}
+  }
+
+  let appInitialized = false;
+  function initApp(){
+    if (appInitialized) return;
+    appInitialized = true;
+
+    const tabFormBtn = document.getElementById('tabFormBtn');
+    const tabDashBtn = document.getElementById('tabDashBtn');
+    const formSection = document.getElementById('formSection');
+    const dashSection = document.getElementById('dashSection');
+    const footerBar = document.getElementById('footerBar');
+    const pageTitle = document.getElementById('pageTitle');
+
+    tabFormBtn.addEventListener('click', function(){
+      tabFormBtn.classList.add('active');
+      tabDashBtn.classList.remove('active');
+      formSection.classList.remove('hidden');
+      dashSection.classList.add('hidden');
+      footerBar.classList.remove('hidden');
+      pageTitle.textContent = 'Lead Form';
+    });
+    tabDashBtn.addEventListener('click', function(){
+      tabDashBtn.classList.add('active');
+      tabFormBtn.classList.remove('active');
+      dashSection.classList.remove('hidden');
+      formSection.classList.add('hidden');
+      footerBar.classList.add('hidden');
+      pageTitle.textContent = 'My Dashboard';
+      loadDashboard();
+    });
+
+    const form = document.getElementById('leadForm');
+    const btn = document.getElementById('submitBtn');
+    const statusEl = document.getElementById('status');
+    const assignSelect = document.getElementById('assignedTo');
+    const productSelect = document.getElementById('product');
+    const waBtn = document.getElementById('waBtn');
+    let usersList = [];
+    let itemsList = [];
+    let stepsList = ['New Lead','Contacted','Site Visit','Quotation','Converted'];
+
+    function fillAssignDropdown(users){
+      usersList = users;
+      assignSelect.innerHTML = '';
+      const blank = document.createElement('option');
+      blank.value = ''; blank.textContent = '-- Select --';
+      assignSelect.appendChild(blank);
+      users.forEach(function(u){
+        const opt = document.createElement('option');
+        opt.value = u.name; opt.textContent = u.name;
+        assignSelect.appendChild(opt);
+      });
+    }
+
+    function fillProductDropdown(items){
+      itemsList = items;
+      productSelect.innerHTML = '';
+      const blank = document.createElement('option');
+      blank.value = ''; blank.textContent = '-- Select --';
+      productSelect.appendChild(blank);
+      items.forEach(function(it){
+        const opt = document.createElement('option');
+        opt.value = it.name;
+        opt.textContent = it.name + ' (Stock: ' + it.stock + ')';
+        productSelect.appendChild(opt);
+      });
+    }
+
+    productSelect.addEventListener('change', function(){
+      const item = itemsList.find(function(it){ return it.name === productSelect.value; });
+      if (!item || !item.department) return;
+      const match = usersList.find(function(u){ return u.department === item.department; });
+      if (match) assignSelect.value = match.name;
+    });
+
+    apiCall('getUsers').then(fillAssignDropdown);
+    apiCall('getItems').then(fillProductDropdown);
+    apiCall('getSteps').then(function(steps){ stepsList = steps; });
+
+    function userOptionsHtml(selected){
+      let html = '';
+      usersList.forEach(function(u){
+        html += '<option value="' + u.name + '"' + (u.name === selected ? ' selected' : '') + '>' + u.name + '</option>';
+      });
+      return html;
+    }
+
+    function stepOptionsHtml(selected){
+      let html = '';
+      stepsList.forEach(function(s){
+        html += '<option value="' + s + '"' + (s === selected ? ' selected' : '') + '>' + s + '</option>';
+      });
+      return html;
+    }
+
+    window.renderDashboard = function(leads){
+      const dashSummary = document.getElementById('dashSummary');
+      const dashList = document.getElementById('dashList');
+      const newCount = leads.filter(function(l){ return l.status === 'New Lead'; }).length;
+      dashSummary.innerHTML =
+        '<div class="summary-bar">' +
+          '<div class="summary-box amber"><div class="num">' + newCount + '</div><div class="lbl">New Leads</div></div>' +
+          '<div class="summary-box"><div class="num">' + leads.length + '</div><div class="lbl">Total Assigned</div></div>' +
+        '</div>';
+
+      if (leads.length === 0) {
+        dashList.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No leads assigned.</p></div>';
+        return;
+      }
+
+      dashList.innerHTML = leads.map(function(l){
+        return '<div class="lead-card ' + (l.status === 'New Lead' ? 'is-new' : '') + '" data-leadid="' + l.leadId + '">' +
+          '<div class="row"><span class="cname">' + l.customer + '</span>' +
+          '<span class="badge ' + (l.status === 'New Lead' ? 'new' : '') + '">' + l.status + '</span></div>' +
+          '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
+          '<div class="meta">' + l.date + (l.value ? ' &middot; Rs.' + l.value : '') + '</div>' +
+          '<div class="lead-actions">' +
+            '<div class="row2">' +
+              '<select class="action-status">' + stepOptionsHtml(l.status) + '</select>' +
+              '<select class="action-assign">' + userOptionsHtml(l.assignedTo) + '</select>' +
+            '</div>' +
+            '<textarea class="action-desc" placeholder="Write description (what was done, next steps)..."></textarea>' +
+            '<button type="button" class="lead-update-btn">Update &amp; Move Forward</button>' +
+          '</div>' +
+          '<div class="lead-msg"></div>' +
+          '</div>';
+      }).join('');
+
+      document.querySelectorAll('.lead-update-btn').forEach(function(updBtn){
+        updBtn.addEventListener('click', async function(){
+          const cardEl = updBtn.closest('.lead-card');
+          const leadId = cardEl.getAttribute('data-leadid');
+          const newStatus = cardEl.querySelector('.action-status').value;
+          const newAssign = cardEl.querySelector('.action-assign').value;
+          const desc = cardEl.querySelector('.action-desc').value.trim();
+          const msgEl = cardEl.querySelector('.lead-msg');
+          updBtn.disabled = true;
+          updBtn.textContent = '...';
+          try {
+            const res = await apiCall('updateLeadAction', {
+              leadId: leadId, newStep: newStatus, newAssignedTo: newAssign,
+              description: desc, updatedBy: currentUser.name
+            });
+            updBtn.disabled = false;
+            updBtn.textContent = 'Update & Move Forward';
+            if (res.status === 'success') {
+              msgEl.textContent = 'Updated successfully!';
+              msgEl.className = 'lead-msg ok';
+              loadDashboard();
+            } else {
+              msgEl.textContent = res.message || 'Error';
+              msgEl.className = 'lead-msg err';
+            }
+          } catch (err) {
+            updBtn.disabled = false;
+            updBtn.textContent = 'Update & Move Forward';
+            msgEl.textContent = err.message;
+            msgEl.className = 'lead-msg err';
+          }
+        });
+      });
+    };
+
+    function toWaNumber(num){
+      num = (num || '').toString().replace(/\D/g,'');
+      if (num.length === 10) return '91' + num;
+      return num;
+    }
+
+    let waStage = 0;
+    let custLink = '', userLink = '';
+
+    waBtn.addEventListener('click', function(){
+      setTimeout(function(){
+        if (waStage === 0 && userLink) {
+          waStage = 1;
+          waBtn.textContent = 'Send WhatsApp to User';
+          waBtn.href = userLink;
+        } else {
+          waBtn.style.display = 'none';
+        }
+      }, 400);
+    });
+
+    form.addEventListener('submit', async function(e){
+      e.preventDefault();
+      statusEl.textContent = '';
+      statusEl.className = '';
+      waBtn.style.display = 'none';
+
+      const payload = {
+        name: document.getElementById('name').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        source: document.getElementById('source').value,
+        product: productSelect.value,
+        productDesc: document.getElementById('productDesc').value.trim(),
+        value: document.getElementById('value').value,
+        assignedTo: assignSelect.value,
+        notes: document.getElementById('notes').value.trim()
+      };
+
+      if (!payload.name || !payload.phone) {
+        statusEl.textContent = 'Name and Phone Number are required.';
+        statusEl.className = 'err';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+
+      try {
+        const res = await apiCall('saveLead', payload);
+        statusEl.textContent = 'Lead saved successfully! Added at row ' + res.row + '.';
+        statusEl.className = 'ok';
+        btn.disabled = false;
+        btn.textContent = 'Save Lead';
+
+        const custMsg = 'Hello ' + payload.name + ', thank you for contacting us' + (payload.product ? (' regarding ' + payload.product) : '') + '. We will get in touch with you shortly.';
+        custLink = 'https://wa.me/' + toWaNumber(payload.phone) + '?text=' + encodeURIComponent(custMsg);
+
+        const assignedUser = usersList.find(function(u){ return u.name === payload.assignedTo; });
+        userLink = '';
+        if (assignedUser && assignedUser.mobile) {
+          const userMsg = 'A new lead has been assigned to you:\nName: ' + payload.name + '\nPhone: ' + payload.phone + '\nProduct: ' + payload.product + (payload.productDesc ? ('\nDescription: ' + payload.productDesc) : '') + '\nValue: Rs.' + payload.value + '\nSource: ' + payload.source + (payload.notes ? ('\nNotes: ' + payload.notes) : '');
+          userLink = 'https://wa.me/' + toWaNumber(assignedUser.mobile) + '?text=' + encodeURIComponent(userMsg);
+        }
+
+        waStage = 0;
+        waBtn.textContent = 'Send WhatsApp to Customer';
+        waBtn.href = custLink;
+        waBtn.style.display = 'flex';
+
+        form.reset();
+        document.getElementById('source').value = 'WhatsApp';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+        statusEl.className = 'err';
+        btn.disabled = false;
+        btn.textContent = 'Save Lead';
+      }
+    });
+  }
+
+  function loadDashboard(){
+    if (!currentUser) return;
+    const dashList = document.getElementById('dashList');
+    if (dashList) dashList.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+    apiCall('getMyLeads', { userName: currentUser.name }).then(window.renderDashboard);
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js').catch(function(){});
+  }
+</script>
+</body>
+</html>
