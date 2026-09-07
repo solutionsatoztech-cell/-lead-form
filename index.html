@@ -248,7 +248,6 @@
 <script>
   const SUPABASE_URL = "https://wnorbyaeikvusdzesbkt.supabase.co";
   const SUPABASE_KEY = "sb_publishable_l9_ENeEmiv59DJta1I8BGA_b7W7PXWV";
-  console.log("Checking URL:", SUPABASE_URL); 
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
   const loginScreen = document.getElementById('loginScreen');
@@ -355,128 +354,90 @@
 
     window.loadCustomers = async function(){
       const listEl = document.getElementById('customersList');
-      listEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading Customers...</p>';
-      
-      try {
-        const { data, error } = await sb
-          .from('customers')
-          .select('*')
-          .order('created_at', { ascending: false });
-          
-        if (error) throw error;
+      listEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+      const { data, error } = await sb
+        .from('leads')
+        .select('*')
+        .or('created_by.eq.' + currentUser.name + ',assigned_to.eq.' + currentUser.name)
+        .order('created_at', { ascending: false });
+      if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
 
-        const addBar = '<button type="button" class="add-btn" id="addNewCustomerBtn" style="margin-bottom:14px;">+ Add New Customer</button>';
+      const addBar = '<button type="button" class="add-btn" id="addCustomerBtn" style="margin-bottom:14px;">+ Add New Customer</button>';
 
-        if (!data || !data.length) { 
-          listEl.innerHTML = addBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers yet.</p></div>'; 
-        } else {
-          listEl.innerHTML = addBar + data.map(function(c){
-            const dateStr = c.created_at ? new Date(c.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-            return '<div class="lead-card" data-custid="' + c.id + '">' +
-              '<div class="row"><span class="cname">' + c.customer_name + '</span></div>' +
-              '<div class="meta">Phone: ' + (c.phone || 'N/A') + (c.email ? ' &middot; Email: ' + c.email : '') + '</div>' +
-              '<div class="meta">Added on: ' + dateStr + (c.address ? ' &middot; ' + c.address : '') + '</div>' +
-              '<div class="lead-actions">' +
-                '<div class="row2">' +
-                  '<a href="tel:' + c.phone + '" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;">Call</a>' +
-                  '<a href="https://wa.me/' + toWaNumber(c.phone) + '" target="_blank" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;color:var(--wa);border-color:#B7E5C6;">WhatsApp</a>' +
-                '</div>' +
-                '<div class="row2">' +
-                  '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
-                  '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
-                '</div>' +
-              '</div>' +
-              '<div class="edit-slot"></div>' +
-              '</div>';
-          }).join('');
-        }
+      if (!data || !data.length) { listEl.innerHTML = addBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers yet.</p></div>'; document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); }); return; }
 
-        document.getElementById('addNewCustomerBtn').addEventListener('click', function(){
-          showCustomerForm(null, null);
+      listEl.innerHTML = addBar + data.map(function(l){
+        const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+        const untouched = l.status === 'New Lead';
+        const roleTag = l.created_by === currentUser.name && l.assigned_to === currentUser.name ? 'Created & Assigned to you'
+          : l.created_by === currentUser.name ? 'Created by you'
+          : 'Assigned to you';
+        return '<div class="lead-card ' + (untouched ? 'is-new' : '') + '" data-custid="' + l.id + '">' +
+          '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
+          '<span class="badge ' + (untouched ? 'new' : '') + '">' + l.status + '</span></div>' +
+          '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
+          '<div class="meta">' + dateStr + ' &middot; ' + roleTag + (untouched ? ' &middot; <b style="color:var(--amber-dark);">No action taken yet</b>' : '') + '</div>' +
+          '<div class="lead-actions">' +
+            '<div class="row2">' +
+              '<a href="tel:' + l.phone + '" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;">Call</a>' +
+              '<a href="https://wa.me/' + toWaNumber(l.phone) + '" target="_blank" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;color:var(--wa);border-color:#B7E5C6;">WhatsApp</a>' +
+            '</div>' +
+            '<div class="row2">' +
+              '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
+              '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
+            '</div>' +
+          '</div>' +
+          '<div class="edit-slot"></div>' +
+          '</div>';
+      }).join('');
+
+      document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); });
+
+      listEl.querySelectorAll('.edit-customer').forEach(function(b){
+        b.addEventListener('click', function(){
+          const card = b.closest('.lead-card');
+          const id = card.getAttribute('data-custid');
+          const lead = data.find(x => String(x.id) === id);
+          showCustomerEditForm(lead, card.querySelector('.edit-slot'));
         });
-
-        listEl.querySelectorAll('.edit-customer').forEach(function(b){
-          b.addEventListener('click', function(){
-            const card = b.closest('.lead-card');
-            const id = card.getAttribute('data-custid');
-            const cust = data.find(x => String(x.id) === id);
-            showCustomerForm(cust, card.querySelector('.edit-slot'));
-          });
+      });
+      listEl.querySelectorAll('.del-customer').forEach(function(b){
+        b.addEventListener('click', async function(){
+          if (!confirm('Delete this customer/lead? This cannot be undone.')) return;
+          const card = b.closest('.lead-card');
+          const id = card.getAttribute('data-custid');
+          await sb.from('leads').delete().eq('id', id);
+          loadCustomers();
         });
-
-        listEl.querySelectorAll('.del-customer').forEach(function(b){
-          b.addEventListener('click', async function(){
-            if (!confirm('Delete this customer? This cannot be undone.')) return;
-            const card = b.closest('.lead-card');
-            const id = card.getAttribute('data-custid');
-            await sb.from('customers').delete().eq('id', id);
-            loadCustomers();
-          });
-        });
-
-      } catch (err) {
-        console.error("Customers error:", err);
-        listEl.innerHTML = '<p style="color:red;text-align:center;">Error: ' + err.message + '</p>';
-      }
+      });
     };
 
-    function showCustomerForm(customer, slotEl){
-      const target = slotEl || (function(){
-        const div = document.createElement('div');
-        div.style.marginBottom = "14px";
-        document.getElementById('customersList').insertBefore(div, document.getElementById('customersList').children[1]);
-        return div;
-      })();
-
-      target.innerHTML =
-        '<div class="card edit-form" style="border:1.5px solid var(--navy); margin-top:0;">' +
-        '<div class="section-title" style="margin-top:0;">' + (customer ? 'Edit Customer' : 'New Customer') + '</div>' +
+    function showCustomerEditForm(lead, slotEl){
+      slotEl.innerHTML =
+        '<div class="edit-form">' +
         '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Customer Name</span><input type="text" class="c-name" value="' + (customer?.customer_name||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Phone</span><input type="text" class="c-phone" value="' + (customer?.phone||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Customer Name</span><input type="text" class="c-name" value="' + (lead.customer_name||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Phone</span><input type="text" class="c-phone" value="' + (lead.phone||'') + '"></div>' +
         '</div>' +
         '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Email</span><input type="email" class="c-email" value="' + (customer?.email||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Address</span><input type="text" class="c-address" value="' + (customer?.address||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Product</span><input type="text" class="c-product" value="' + (lead.product||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Expected Value</span><input type="number" class="c-value" value="' + (lead.expected_value??'') + '"></div>' +
         '</div>' +
+        '<div class="field-block" style="margin-bottom:8px;"><span class="mini-label">Notes</span><textarea class="c-notes">' + (lead.notes||'') + '</textarea></div>' +
         '<div class="save-row"><button type="button" class="save c-save">Save</button><button type="button" class="cancel c-cancel">Cancel</button></div>' +
         '</div>';
-
-      target.querySelector('.c-cancel').addEventListener('click', function(){ 
-        target.innerHTML = ''; 
-        if(!slotEl) target.remove(); 
-      });
-
-      target.querySelector('.c-save').addEventListener('click', async function(){
-        const btn = this;
-        btn.disabled = true; btn.textContent = "Saving...";
-
+      slotEl.querySelector('.c-cancel').addEventListener('click', function(){ slotEl.innerHTML = ''; });
+      slotEl.querySelector('.c-save').addEventListener('click', async function(){
         const payload = {
-          customer_name: target.querySelector('.c-name').value.trim(),
-          phone: target.querySelector('.c-phone').value.trim(),
-          email: target.querySelector('.c-email').value.trim(),
-          address: target.querySelector('.c-address').value.trim()
+          customer_name: slotEl.querySelector('.c-name').value.trim(),
+          phone: slotEl.querySelector('.c-phone').value.trim(),
+          product: slotEl.querySelector('.c-product').value.trim(),
+          expected_value: slotEl.querySelector('.c-value').value || null,
+          notes: slotEl.querySelector('.c-notes').value.trim()
         };
-
-        if (!payload.customer_name || !payload.phone) { 
-          alert('Name and Phone are required'); 
-          btn.disabled = false; btn.textContent = "Save";
-          return; 
-        }
-
-        try {
-          if (customer) {
-            const { error } = await sb.from('customers').update(payload).eq('id', customer.id);
-            if (error) throw error;
-          } else {
-            const { error } = await sb.from('customers').insert(payload);
-            if (error) throw error;
-          }
-          loadCustomers(); 
-        } catch (err) {
-          alert("Error saving customer: " + err.message);
-          btn.disabled = false; btn.textContent = "Save";
-        }
+        if (!payload.customer_name || !payload.phone) { alert('Name and Phone are required'); return; }
+        await sb.from('leads').update(payload).eq('id', lead.id);
+        loadCustomers();
       });
     }
 
@@ -508,33 +469,20 @@
       const { data } = await sb.from('users').select('name, mobile, email, department, role');
       if (data) fillAssignDropdown(data);
     }
-    
     async function loadItems(){
-      try {
-        console.log("Loading items...");
-        const [itemsRes, txnsRes] = await Promise.all([
-          sb.from('inventory').select('id, item_name, department'),
-          sb.from('stock_transactions').select('item_id, type, quantity')
-        ]);
-        if (itemsRes.error) throw itemsRes.error;
-        if (txnsRes.error) throw txnsRes.error;
-        const items = itemsRes.data;
-        const txns = txnsRes.data;
-        if (items) {
-          const stockMap = {};
-          (txns || []).forEach(function(t){
-            const q = Number(t.quantity) || 0;
-            stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
-          });
-          fillProductDropdown(items.map(function(r){
-            return { name: r.item_name, stock: stockMap[r.id] || 0, department: r.department };
-          }));
-        }
-      } catch (err) {
-        console.error("loadItems error:", err.message || err);
+      const { data: items } = await sb.from('inventory').select('id, item_name, department');
+      const { data: txns } = await sb.from('stock_transactions').select('item_id, type, quantity');
+      if (items) {
+        const stockMap = {};
+        (txns || []).forEach(function(t){
+          const q = Number(t.quantity) || 0;
+          stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+        });
+        fillProductDropdown(items.map(function(r){
+          return { name: r.item_name, stock: stockMap[r.id] || 0, department: r.department };
+        }));
       }
     }
-    
     async function loadSteps(){
       const { data } = await sb.from('steps').select('step_name').order('step_order', { ascending: true });
       if (data && data.length) stepsListGlobal = data.map(r => r.step_name);
@@ -567,10 +515,10 @@
         product_desc: document.getElementById('productDesc').value.trim(),
         status: 'New Lead',
         assigned_to: assignSelect.value,
+        created_by: currentUser.name,
         expected_value: document.getElementById('value').value || null,
         notes: document.getElementById('notes').value.trim()
       };
-      
       if (!payload.customer_name || !payload.phone) {
         statusEl.textContent = 'Name and Phone Number are required.'; statusEl.className = 'err'; return;
       }
@@ -581,7 +529,6 @@
         statusEl.textContent = 'Error: ' + insErr.message; statusEl.className = 'err';
         btn.disabled = false; btn.textContent = 'Save Lead'; return;
       }
-      
       await sb.from('lead_log').insert({ lead_id: inserted.id, step: 'New Lead', updated_by: payload.assigned_to, description: payload.notes });
 
       statusEl.textContent = 'Lead saved successfully!'; statusEl.className = 'ok';
@@ -642,90 +589,76 @@
     window.loadAdminReports = async function(){
       adminReportsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
-      try {
-        console.log("Loading Admin Reports...");
-        const [leadsRes, logsRes, itemsRes, allTxnsRes] = await Promise.all([
-          sb.from('leads').select('*'),
-          sb.from('lead_log').select('*').order('created_at', { ascending: false }).limit(20),
-          sb.from('inventory').select('*'),
-          sb.from('stock_transactions').select('*').order('created_at', { ascending: false })
-        ]);
-        if (leadsRes.error) throw leadsRes.error;
-        if (logsRes.error) throw logsRes.error;
-        if (itemsRes.error) throw itemsRes.error;
-        if (allTxnsRes.error) throw allTxnsRes.error;
+      const [{ data: leads }, { data: logs }, { data: items }, { data: txns }] = await Promise.all([
+        sb.from('leads').select('*'),
+        sb.from('lead_log').select('*').order('created_at', { ascending: false }).limit(20),
+        sb.from('inventory').select('*'),
+        sb.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(20)
+      ]);
 
-        const leads = leadsRes.data;
-        const logs = logsRes.data;
-        const items = itemsRes.data;
-        const allTxns = allTxnsRes.data;
+      const totalLeads = (leads || []).length;
+      const newLeads = (leads || []).filter(l => l.status === 'New Lead').length;
+      const converted = (leads || []).filter(l => l.status === 'Converted').length;
 
-        const txns = (allTxns || []).slice(0, 20);
-        const totalLeads = (leads || []).length;
-        const newLeads = (leads || []).filter(l => l.status === 'New Lead').length;
-        const converted = (leads || []).filter(l => l.status === 'Converted').length;
+      const stockMap = {};
+      (txns || []).forEach(function(t){});
+      const { data: allTxns } = await sb.from('stock_transactions').select('item_id, type, quantity');
+      (allTxns || []).forEach(function(t){
+        const q = Number(t.quantity) || 0;
+        stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+      });
+      const lowStockItems = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0));
 
-        const stockMap = {};
-        (allTxns || []).forEach(function(t){
-          const q = Number(t.quantity) || 0;
-          stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
-        });
-        const lowStockItems = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0));
+      const byUser = {};
+      (leads || []).forEach(function(l){
+        const u = l.assigned_to || 'Unassigned';
+        byUser[u] = (byUser[u] || 0) + 1;
+      });
+      const userStatsHtml = Object.keys(byUser).sort((a,b) => byUser[b]-byUser[a]).map(function(u){
+        return '<div class="user-stat-row"><span>' + u + '</span><span class="cnt">' + byUser[u] + ' leads</span></div>';
+      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No leads yet.</p>';
 
-        const byUser = {};
-        (leads || []).forEach(function(l){
-          const u = l.assigned_to || 'Unassigned';
-          byUser[u] = (byUser[u] || 0) + 1;
-        });
-        const userStatsHtml = Object.keys(byUser).sort((a,b) => byUser[b]-byUser[a]).map(function(u){
-          return '<div class="user-stat-row"><span>' + u + '</span><span class="cnt">' + byUser[u] + ' leads</span></div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No leads yet.</p>';
+      const leadsById = {};
+      (leads || []).forEach(function(l){ leadsById[l.id] = l; });
+      const activityHtml = (logs || []).map(function(log){
+        const lead = leadsById[log.lead_id];
+        const when = log.created_at ? new Date(log.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+        return '<div class="activity-item">' +
+          '<div class="who">' + (log.updated_by || 'Someone') + '</div>' +
+          '<div class="what">Moved ' + (lead ? lead.customer_name : 'a lead') + ' to <b>' + log.step + '</b>' + (log.description ? (' &mdash; ' + log.description) : '') + '</div>' +
+          '<div class="when">' + when + '</div>' +
+          '</div>';
+      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No activity yet.</p>';
 
-        const leadsById = {};
-        (leads || []).forEach(function(l){ leadsById[l.id] = l; });
-        const activityHtml = (logs || []).map(function(log){
-          const lead = leadsById[log.lead_id];
-          const when = log.created_at ? new Date(log.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
-          return '<div class="activity-item">' +
-            '<div class="who">' + (log.updated_by || 'Someone') + '</div>' +
-            '<div class="what">Moved ' + (lead ? lead.customer_name : 'a lead') + ' to <b>' + log.step + '</b>' + (log.description ? (' &mdash; ' + log.description) : '') + '</div>' +
-            '<div class="when">' + when + '</div>' +
-            '</div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No activity yet.</p>';
+      const reorderHtml = lowStockItems.map(function(it){
+        return '<div class="activity-item" style="border-left-color:var(--err);">' +
+          '<div class="who">' + it.item_name + '</div>' +
+          '<div class="what">Stock: ' + (stockMap[it.id]||0) + ' (Reorder Level: ' + (it.reorder_level||0) + ')</div>' +
+          '</div>';
+      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">All items are well stocked.</p>';
 
-        const reorderHtml = lowStockItems.map(function(it){
-          return '<div class="activity-item" style="border-left-color:var(--err);">' +
-            '<div class="who">' + it.item_name + '</div>' +
-            '<div class="what">Stock: ' + (stockMap[it.id]||0) + ' (Reorder Level: ' + (it.reorder_level||0) + ')</div>' +
-            '</div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">All items are well stocked.</p>';
+      const itemsById = {};
+      (items || []).forEach(function(it){ itemsById[it.id] = it; });
+      const stockMoveHtml = (txns || []).map(function(t){
+        const it = itemsById[t.item_id];
+        const when = t.created_at ? new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+        return '<div class="activity-item" style="border-left-color:' + (t.type === 'sale' ? 'var(--err)' : 'var(--ok)') + ';">' +
+          '<div class="who">' + (it ? it.item_name : 'Item') + ' &middot; ' + (t.type === 'sale' ? 'Sold' : 'Purchased') + ' ' + t.quantity + '</div>' +
+          '<div class="when">' + when + (t.note ? (' &middot; ' + t.note) : '') + '</div>' +
+          '</div>';
+      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No stock movement yet.</p>';
 
-        const itemsById = {};
-        (items || []).forEach(function(it){ itemsById[it.id] = it; });
-        const stockMoveHtml = (txns || []).map(function(t){
-          const it = itemsById[t.item_id];
-          const when = t.created_at ? new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
-          return '<div class="activity-item" style="border-left-color:' + (t.type === 'sale' ? 'var(--err)' : 'var(--ok)') + ';">' +
-            '<div class="who">' + (it ? it.item_name : 'Item') + ' &middot; ' + (t.type === 'sale' ? 'Sold' : 'Purchased') + ' ' + t.quantity + '</div>' +
-            '<div class="when">' + when + (t.note ? (' &middot; ' + t.note) : '') + '</div>' +
-            '</div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No stock movement yet.</p>';
-
-        adminReportsPanel.innerHTML =
-          '<div class="stat-grid">' +
-            '<div class="stat-box amber"><div class="num">' + newLeads + '</div><div class="lbl">New Leads</div></div>' +
-            '<div class="stat-box"><div class="num">' + totalLeads + '</div><div class="lbl">Total Leads</div></div>' +
-            '<div class="stat-box ok"><div class="num">' + converted + '</div><div class="lbl">Converted</div></div>' +
-            '<div class="stat-box err"><div class="num">' + lowStockItems.length + '</div><div class="lbl">Low Stock Items</div></div>' +
-          '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Leads by User</div>' + userStatsHtml + '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Reorder Alerts</div>' + reorderHtml + '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Recent Stock Movement</div>' + stockMoveHtml + '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Recent Activity</div>' + activityHtml + '</div>';
-      } catch (err) {
-        console.error("Admin Reports error:", err);
-        adminReportsPanel.innerHTML = '<p style="color:red;text-align:center;">Error: ' + err.message + '</p>';
-      }
+      adminReportsPanel.innerHTML =
+        '<div class="stat-grid">' +
+          '<div class="stat-box amber"><div class="num">' + newLeads + '</div><div class="lbl">New Leads</div></div>' +
+          '<div class="stat-box"><div class="num">' + totalLeads + '</div><div class="lbl">Total Leads</div></div>' +
+          '<div class="stat-box ok"><div class="num">' + converted + '</div><div class="lbl">Converted</div></div>' +
+          '<div class="stat-box err"><div class="num">' + lowStockItems.length + '</div><div class="lbl">Low Stock Items</div></div>' +
+        '</div>' +
+        '<div class="card"><div class="section-title" style="margin-top:0;">Leads by User</div>' + userStatsHtml + '</div>' +
+        '<div class="card"><div class="section-title" style="margin-top:0;">Reorder Alerts</div>' + reorderHtml + '</div>' +
+        '<div class="card"><div class="section-title" style="margin-top:0;">Recent Stock Movement</div>' + stockMoveHtml + '</div>' +
+        '<div class="card"><div class="section-title" style="margin-top:0;">Recent Activity</div>' + activityHtml + '</div>';
     };
 
 
@@ -963,127 +896,113 @@
         '<button type="button" class="add-btn" id="addItemBtn">+ Add New Item</button><div id="itemsList"></div>';
       document.getElementById('addItemBtn').addEventListener('click', function(){ showItemForm(null); });
 
+      const { data, error } = await sb.from('inventory').select('*').order('item_name');
       const listEl = document.getElementById('itemsList');
-      listEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+      if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
 
-      try {
-        console.log("Loading Admin Inventory...");
-        const [invRes, txnsRes] = await Promise.all([
-          sb.from('inventory').select('*').order('item_name'),
-          sb.from('stock_transactions').select('item_id, type, quantity')
-        ]);
-        
-        if (invRes.error) throw invRes.error;
-        if (txnsRes.error) throw txnsRes.error;
+      document.getElementById('exportItemsBtn').addEventListener('click', function(){
+        exportToExcel((data||[]).map(it => ({
+          sku_code: it.sku_code, item_group: it.item_group, item_name: it.item_name,
+          reorder_level: it.reorder_level, unit_price: it.unit_price, department: it.department, supplier: it.supplier
+        })), 'inventory_export.xlsx', 'Inventory');
+      });
 
-        const data = invRes.data;
-        const txns = txnsRes.data;
+      document.getElementById('importItemsFile').addEventListener('change', function(e){
+        const file = e.target.files[0];
+        if (!file) return;
+        const msgEl = document.getElementById('itemsImportMsg');
+        msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
+        readExcelFile(file, async function(rows){
+          const cleanRows = rows.map(r => ({
+            sku_code: r.sku_code || r['SKU Code'] || '',
+            item_group: r.item_group || r['Item Group'] || '',
+            item_name: r.item_name || r['Item Name'] || '',
+            reorder_level: Number(r.reorder_level || r['Reorder Level']) || 0,
+            unit_price: r.unit_price || r['Unit Price'] ? Number(r.unit_price || r['Unit Price']) : null,
+            department: r.department || r.Department || '',
+            supplier: r.supplier || r.Supplier || ''
+          })).filter(r => r.item_name);
+          if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: sku_code, item_group, item_name, department, reorder_level, unit_price, supplier'; msgEl.className = 'import-msg err'; return; }
+          const { error: impErr } = await sb.from('inventory').insert(cleanRows);
+          if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
+          msgEl.textContent = cleanRows.length + ' items imported!'; msgEl.className = 'import-msg ok';
+          loadAdminInventory();
+        });
+      });
 
-        document.getElementById('exportItemsBtn').addEventListener('click', function(){
-          exportToExcel((data||[]).map(it => ({
-            sku_code: it.sku_code, item_group: it.item_group, item_name: it.item_name,
-            reorder_level: it.reorder_level, unit_price: it.unit_price, department: it.department, supplier: it.supplier
-          })), 'inventory_export.xlsx', 'Inventory');
+      const { data: txns } = await sb.from('stock_transactions').select('item_id, type, quantity');
+      const stockMap = {};
+      (txns || []).forEach(function(t){
+        const q = Number(t.quantity) || 0;
+        stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+      });
+
+      // Populate filter dropdowns with distinct values
+      const groupSelect = document.getElementById('filterItemGroup');
+      const vendorSelect = document.getElementById('filterVendor');
+      const groups = [...new Set((data||[]).map(it => it.item_group).filter(Boolean))].sort();
+      const vendors = [...new Set((data||[]).map(it => it.supplier).filter(Boolean))].sort();
+      groups.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; groupSelect.appendChild(o); });
+      vendors.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; vendorSelect.appendChild(o); });
+
+      function renderItemsList(){
+        const nameQ = document.getElementById('filterItemName').value.trim().toLowerCase();
+        const groupQ = groupSelect.value;
+        const vendorQ = vendorSelect.value;
+
+        const filtered = data.filter(function(it){
+          if (nameQ && !(it.item_name || '').toLowerCase().includes(nameQ)) return false;
+          if (groupQ && it.item_group !== groupQ) return false;
+          if (vendorQ && it.supplier !== vendorQ) return false;
+          return true;
         });
 
-        document.getElementById('importItemsFile').addEventListener('change', function(e){
-          const file = e.target.files[0];
-          if (!file) return;
-          const msgEl = document.getElementById('itemsImportMsg');
-          msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
-          readExcelFile(file, async function(rows){
-            const cleanRows = rows.map(r => ({
-              sku_code: r.sku_code || r['SKU Code'] || '',
-              item_group: r.item_group || r['Item Group'] || '',
-              item_name: r.item_name || r['Item Name'] || '',
-              reorder_level: Number(r.reorder_level || r['Reorder Level']) || 0,
-              unit_price: r.unit_price || r['Unit Price'] ? Number(r.unit_price || r['Unit Price']) : null,
-              department: r.department || r.Department || '',
-              supplier: r.supplier || r.Supplier || ''
-            })).filter(r => r.item_name);
-            if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: sku_code, item_group, item_name, department, reorder_level, unit_price, supplier'; msgEl.className = 'import-msg err'; return; }
-            const { error: impErr } = await sb.from('inventory').insert(cleanRows);
-            if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
-            msgEl.textContent = cleanRows.length + ' items imported!'; msgEl.className = 'import-msg ok';
+        if (!filtered.length) {
+          listEl.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No items match this filter.</p></div>';
+          return;
+        }
+
+        listEl.innerHTML = filtered.map(function(it){
+          const stock = stockMap[it.id] || 0;
+          const low = stock <= (Number(it.reorder_level)||0);
+          return '<div class="admin-item" data-id="' + it.id + '">' +
+            '<div class="row"><div><div class="title">' + (it.sku_code ? it.sku_code + ' &middot; ' : '') + it.item_name + '</div>' +
+            '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + (it.supplier ? (' &middot; ' + it.supplier) : '') + '</div></div>' +
+            '<div class="btns"><button type="button" class="icon-btn stock-item">+ Stock</button><button type="button" class="icon-btn edit-item">Edit</button>' +
+            '<button type="button" class="icon-btn danger del-item">Delete</button></div></div>' +
+            '<div class="edit-slot"></div></div>';
+        }).join('');
+
+        listEl.querySelectorAll('.stock-item').forEach(function(b){
+          b.addEventListener('click', function(){
+            const item = b.closest('.admin-item');
+            const id = item.getAttribute('data-id');
+            showStockForm(id, item.querySelector('.edit-slot'));
+          });
+        });
+        listEl.querySelectorAll('.edit-item').forEach(function(b){
+          b.addEventListener('click', function(){
+            const item = b.closest('.admin-item');
+            const id = item.getAttribute('data-id');
+            const it = data.find(x => String(x.id) === id);
+            showItemForm(it, item.querySelector('.edit-slot'));
+          });
+        });
+        listEl.querySelectorAll('.del-item').forEach(function(b){
+          b.addEventListener('click', async function(){
+            if (!confirm('Delete this item?')) return;
+            const id = b.closest('.admin-item').getAttribute('data-id');
+            await sb.from('inventory').delete().eq('id', id);
             loadAdminInventory();
           });
         });
-
-        const stockMap = {};
-        (txns || []).forEach(function(t){
-          const q = Number(t.quantity) || 0;
-          stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
-        });
-
-        const groupSelect = document.getElementById('filterItemGroup');
-        const vendorSelect = document.getElementById('filterVendor');
-        const groups = [...new Set((data||[]).map(it => it.item_group).filter(Boolean))].sort();
-        const vendors = [...new Set((data||[]).map(it => it.supplier).filter(Boolean))].sort();
-        groups.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; groupSelect.appendChild(o); });
-        vendors.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; vendorSelect.appendChild(o); });
-
-        function renderItemsList(){
-          const nameQ = document.getElementById('filterItemName').value.trim().toLowerCase();
-          const groupQ = groupSelect.value;
-          const vendorQ = vendorSelect.value;
-
-          const filtered = data.filter(function(it){
-            if (nameQ && !(it.item_name || '').toLowerCase().includes(nameQ)) return false;
-            if (groupQ && it.item_group !== groupQ) return false;
-            if (vendorQ && it.supplier !== vendorQ) return false;
-            return true;
-          });
-
-          if (!filtered.length) {
-            listEl.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No items match this filter.</p></div>';
-            return;
-          }
-
-          listEl.innerHTML = filtered.map(function(it){
-            const stock = stockMap[it.id] || 0;
-            const low = stock <= (Number(it.reorder_level)||0);
-            return '<div class="admin-item" data-id="' + it.id + '">' +
-              '<div class="row"><div><div class="title">' + (it.sku_code ? it.sku_code + ' &middot; ' : '') + it.item_name + '</div>' +
-              '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + (it.supplier ? (' &middot; ' + it.supplier) : '') + '</div></div>' +
-              '<div class="btns"><button type="button" class="icon-btn stock-item">+ Stock</button><button type="button" class="icon-btn edit-item">Edit</button>' +
-              '<button type="button" class="icon-btn danger del-item">Delete</button></div></div>' +
-              '<div class="edit-slot"></div></div>';
-          }).join('');
-
-          listEl.querySelectorAll('.stock-item').forEach(function(b){
-            b.addEventListener('click', function(){
-              const item = b.closest('.admin-item');
-              const id = item.getAttribute('data-id');
-              showStockForm(id, item.querySelector('.edit-slot'));
-            });
-          });
-          listEl.querySelectorAll('.edit-item').forEach(function(b){
-            b.addEventListener('click', function(){
-              const item = b.closest('.admin-item');
-              const id = item.getAttribute('data-id');
-              const it = data.find(x => String(x.id) === id);
-              showItemForm(it, item.querySelector('.edit-slot'));
-            });
-          });
-          listEl.querySelectorAll('.del-item').forEach(function(b){
-            b.addEventListener('click', async function(){
-              if (!confirm('Delete this item?')) return;
-              const id = b.closest('.admin-item').getAttribute('data-id');
-              await sb.from('inventory').delete().eq('id', id);
-              loadAdminInventory();
-            });
-          });
-        }
-
-        document.getElementById('filterItemName').addEventListener('input', renderItemsList);
-        groupSelect.addEventListener('change', renderItemsList);
-        vendorSelect.addEventListener('change', renderItemsList);
-
-        renderItemsList();
-      } catch (err) {
-        console.error("Inventory data error:", err);
-        listEl.innerHTML = '<p style="color:red;text-align:center;">Error: ' + err.message + '</p>';
       }
+
+      document.getElementById('filterItemName').addEventListener('input', renderItemsList);
+      groupSelect.addEventListener('change', renderItemsList);
+      vendorSelect.addEventListener('change', renderItemsList);
+
+      renderItemsList();
     };
 
 
