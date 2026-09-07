@@ -9,7 +9,6 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Lead Form</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --navy:#1F4E78; --navy-dark:#153955; --amber:#E2790E; --amber-dark:#C4650A;
@@ -350,12 +349,18 @@
       if (data) fillAssignDropdown(data);
     }
     async function loadItems(){
-      const { data } = await sb.from('inventory').select('item_name, opening_stock, purchased_qty, sold_qty, department');
-      if (data) fillProductDropdown(data.map(r => ({
-        name: r.item_name,
-        stock: (Number(r.opening_stock)||0) + (Number(r.purchased_qty)||0) - (Number(r.sold_qty)||0),
-        department: r.department
-      })));
+      const { data: items } = await sb.from('inventory').select('id, item_name, department');
+      const { data: txns } = await sb.from('stock_transactions').select('item_id, type, quantity');
+      if (items) {
+        const stockMap = {};
+        (txns || []).forEach(function(t){
+          const q = Number(t.quantity) || 0;
+          stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+        });
+        fillProductDropdown(items.map(function(r){
+          return { name: r.item_name, stock: stockMap[r.id] || 0, department: r.department };
+        }));
+      }
     }
     async function loadSteps(){
       const { data } = await sb.from('steps').select('step_name').order('step_order', { ascending: true });
@@ -440,8 +445,20 @@
     subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
     subInventoryBtn.addEventListener('click', function(){ activateSub('inventory'); });
 
-    function exportToExcel(data, filename, sheetName){
+    function loadXLSXLib(){
+      return new Promise(function(resolve, reject){
+        if (window.XLSX) return resolve();
+        const s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+        s.onload = function(){ resolve(); };
+        s.onerror = function(){ reject(new Error('Failed to load Excel library')); };
+        document.head.appendChild(s);
+      });
+    }
+
+    async function exportToExcel(data, filename, sheetName){
       if (!data || !data.length) { alert('No data to export.'); return; }
+      await loadXLSXLib();
       const ws = XLSX.utils.json_to_sheet(data);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -449,14 +466,18 @@
     }
 
     function readExcelFile(file, callback){
-      const reader = new FileReader();
-      reader.onload = function(e){
-        const wb = XLSX.read(e.target.result, { type: 'binary' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(ws);
-        callback(rows);
-      };
-      reader.readAsBinaryString(file);
+      loadXLSXLib().then(function(){
+        const reader = new FileReader();
+        reader.onload = function(e){
+          const wb = XLSX.read(e.target.result, { type: 'binary' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws);
+          callback(rows);
+        };
+        reader.readAsBinaryString(file);
+      }).catch(function(err){
+        alert(err.message);
+      });
     }
 
     window.loadAdminLeads = async function(){
@@ -641,8 +662,7 @@
 
       document.getElementById('exportItemsBtn').addEventListener('click', function(){
         exportToExcel((data||[]).map(it => ({
-          item_name: it.item_name, category: it.category, unit: it.unit,
-          opening_stock: it.opening_stock, purchased_qty: it.purchased_qty, sold_qty: it.sold_qty,
+          sku_code: it.sku_code, item_group: it.item_group, item_name: it.item_name,
           reorder_level: it.reorder_level, unit_price: it.unit_price, department: it.department, supplier: it.supplier
         })), 'inventory_export.xlsx', 'Inventory');
       });
@@ -654,35 +674,47 @@
         msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
         readExcelFile(file, async function(rows){
           const cleanRows = rows.map(r => ({
+            sku_code: r.sku_code || r['SKU Code'] || '',
+            item_group: r.item_group || r['Item Group'] || '',
             item_name: r.item_name || r['Item Name'] || '',
-            category: r.category || r.Category || '',
-            unit: r.unit || r.Unit || '',
-            opening_stock: Number(r.opening_stock || r['Opening Stock']) || 0,
-            purchased_qty: Number(r.purchased_qty || r['Purchased Qty']) || 0,
-            sold_qty: Number(r.sold_qty || r['Sold Qty']) || 0,
             reorder_level: Number(r.reorder_level || r['Reorder Level']) || 0,
             unit_price: r.unit_price || r['Unit Price'] ? Number(r.unit_price || r['Unit Price']) : null,
             department: r.department || r.Department || '',
             supplier: r.supplier || r.Supplier || ''
           })).filter(r => r.item_name);
-          if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: item_name, category, unit, opening_stock, purchased_qty, sold_qty, reorder_level, unit_price, department, supplier'; msgEl.className = 'import-msg err'; return; }
+          if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: sku_code, item_group, item_name, department, reorder_level, unit_price, supplier'; msgEl.className = 'import-msg err'; return; }
           const { error: impErr } = await sb.from('inventory').insert(cleanRows);
           if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
           msgEl.textContent = cleanRows.length + ' items imported!'; msgEl.className = 'import-msg ok';
           loadAdminInventory();
         });
       });
+
+      const { data: txns } = await sb.from('stock_transactions').select('item_id, type, quantity');
+      const stockMap = {};
+      (txns || []).forEach(function(t){
+        const q = Number(t.quantity) || 0;
+        stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+      });
+
       listEl.innerHTML = data.map(function(it){
-        const stock = (Number(it.opening_stock)||0) + (Number(it.purchased_qty)||0) - (Number(it.sold_qty)||0);
+        const stock = stockMap[it.id] || 0;
         const low = stock <= (Number(it.reorder_level)||0);
         return '<div class="admin-item" data-id="' + it.id + '">' +
-          '<div class="row"><div><div class="title">' + it.item_name + '</div>' +
-          '<div class="sub">Stock: ' + stock + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + '</div></div>' +
-          '<div class="btns"><button type="button" class="icon-btn edit-item">Edit</button>' +
+          '<div class="row"><div><div class="title">' + (it.sku_code ? it.sku_code + ' &middot; ' : '') + it.item_name + '</div>' +
+          '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + '</div></div>' +
+          '<div class="btns"><button type="button" class="icon-btn stock-item">+ Stock</button><button type="button" class="icon-btn edit-item">Edit</button>' +
           '<button type="button" class="icon-btn danger del-item">Delete</button></div></div>' +
           '<div class="edit-slot"></div></div>';
       }).join('');
 
+      listEl.querySelectorAll('.stock-item').forEach(function(b){
+        b.addEventListener('click', function(){
+          const item = b.closest('.admin-item');
+          const id = item.getAttribute('data-id');
+          showStockForm(id, item.querySelector('.edit-slot'));
+        });
+      });
       listEl.querySelectorAll('.edit-item').forEach(function(b){
         b.addEventListener('click', function(){
           const item = b.closest('.admin-item');
@@ -701,6 +733,27 @@
       });
     };
 
+    function showStockForm(itemId, slotEl){
+      slotEl.innerHTML =
+        '<div class="edit-form">' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Type</span><select class="st-type"><option value="purchase">Purchase (Stock In)</option><option value="sale">Sale (Stock Out)</option></select></div>' +
+          '<div class="field-block"><span class="mini-label">Quantity</span><input type="number" class="st-qty" placeholder="Quantity"></div>' +
+        '</div>' +
+        '<div class="field-block" style="margin-bottom:8px;"><span class="mini-label">Note</span><input type="text" class="st-note" placeholder="Optional note"></div>' +
+        '<div class="save-row"><button type="button" class="save st-save">Save Entry</button><button type="button" class="cancel st-cancel">Cancel</button></div>' +
+        '</div>';
+      slotEl.querySelector('.st-cancel').addEventListener('click', function(){ slotEl.innerHTML = ''; });
+      slotEl.querySelector('.st-save').addEventListener('click', async function(){
+        const type = slotEl.querySelector('.st-type').value;
+        const qty = Number(slotEl.querySelector('.st-qty').value);
+        const note = slotEl.querySelector('.st-note').value.trim();
+        if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
+        await sb.from('stock_transactions').insert({ item_id: itemId, type: type, quantity: qty, note: note });
+        loadAdminInventory();
+      });
+    }
+
     function showItemForm(item, slotEl){
       const target = slotEl || (function(){
         const div = document.createElement('div');
@@ -710,31 +763,30 @@
       target.innerHTML =
         '<div class="edit-form">' +
         '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">SKU Code</span><input type="text" class="f-sku" placeholder="SKU Code" value="' + (item?.sku_code||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Item Group</span><input type="text" class="f-group" placeholder="Item Group" value="' + (item?.item_group||'') + '"></div>' +
+        '</div>' +
+        '<div class="row2">' +
           '<div class="field-block"><span class="mini-label">Item Name</span><input type="text" class="f-iname" placeholder="Item Name" value="' + (item?.item_name||'') + '"></div>' +
           '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (item?.department||'') + '"></div>' +
         '</div>' +
         '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Opening Stock</span><input type="number" class="f-open" placeholder="Opening Stock" value="' + (item?.opening_stock??0) + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Purchased Qty</span><input type="number" class="f-purch" placeholder="Purchased Qty" value="' + (item?.purchased_qty??0) + '"></div>' +
-        '</div>' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Sold Qty</span><input type="number" class="f-sold" placeholder="Sold Qty" value="' + (item?.sold_qty??0) + '"></div>' +
           '<div class="field-block"><span class="mini-label">Reorder Level</span><input type="number" class="f-reorder" placeholder="Reorder Level" value="' + (item?.reorder_level??0) + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Unit Price</span><input type="number" class="f-price" placeholder="Unit Price" value="' + (item?.unit_price??'') + '"></div>' +
         '</div>' +
         '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Unit Price</span><input type="number" class="f-price" placeholder="Unit Price" value="' + (item?.unit_price??'') + '"></div>' +
           '<div class="field-block"><span class="mini-label">Supplier</span><input type="text" class="f-supplier" placeholder="Supplier" value="' + (item?.supplier||'') + '"></div>' +
+          '<div class="field-block"></div>' +
         '</div>' +
         '<div class="save-row"><button type="button" class="save f-save">Save</button><button type="button" class="cancel f-cancel">Cancel</button></div>' +
         '</div>';
       target.querySelector('.f-cancel').addEventListener('click', function(){ target.innerHTML=''; if(!slotEl) target.remove(); });
       target.querySelector('.f-save').addEventListener('click', async function(){
         const payload = {
+          sku_code: target.querySelector('.f-sku').value.trim(),
+          item_group: target.querySelector('.f-group').value.trim(),
           item_name: target.querySelector('.f-iname').value.trim(),
           department: target.querySelector('.f-dept').value.trim(),
-          opening_stock: Number(target.querySelector('.f-open').value)||0,
-          purchased_qty: Number(target.querySelector('.f-purch').value)||0,
-          sold_qty: Number(target.querySelector('.f-sold').value)||0,
           reorder_level: Number(target.querySelector('.f-reorder').value)||0,
           unit_price: target.querySelector('.f-price').value ? Number(target.querySelector('.f-price').value) : null,
           supplier: target.querySelector('.f-supplier').value.trim()
