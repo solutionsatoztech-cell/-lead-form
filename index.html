@@ -9,6 +9,7 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Lead Form</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
     --navy:#1F4E78; --navy-dark:#153955; --amber:#E2790E; --amber-dark:#C4650A;
@@ -93,6 +94,15 @@
   .save-row .save{background:var(--ok);color:#fff;}
   .save-row .cancel{background:#eee;color:var(--text);}
   .reorder-flag{color:var(--err);font-weight:800;font-size:11.5px;}
+  .mini-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em;margin-bottom:4px;display:block;}
+  .field-block{margin-bottom:0;}
+  .excel-row{display:flex;gap:8px;margin-bottom:14px;}
+  .excel-btn{flex:1;padding:10px;border-radius:9px;border:1.5px solid var(--navy);background:#fff;color:var(--navy);font-weight:800;font-size:12.5px;cursor:pointer;text-align:center;}
+  .excel-btn.import{position:relative;overflow:hidden;}
+  .excel-btn.import input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
+  .import-msg{font-size:12px;font-weight:700;margin-bottom:10px;text-align:center;min-height:16px;}
+  .import-msg.ok{color:var(--ok);}
+  .import-msg.err{color:var(--err);}
 </style>
 </head>
 <body>
@@ -430,13 +440,37 @@
     subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
     subInventoryBtn.addEventListener('click', function(){ activateSub('inventory'); });
 
+    function exportToExcel(data, filename, sheetName){
+      if (!data || !data.length) { alert('No data to export.'); return; }
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      XLSX.writeFile(wb, filename);
+    }
+
+    function readExcelFile(file, callback){
+      const reader = new FileReader();
+      reader.onload = function(e){
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        callback(rows);
+      };
+      reader.readAsBinaryString(file);
+    }
+
     window.loadAdminLeads = async function(){
       adminLeadsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
       const { data, error } = await sb.from('leads').select('*').order('created_at', { ascending: false });
       if (error) { adminLeadsPanel.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
-      if (!data.length) { adminLeadsPanel.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No leads yet.</p></div>'; return; }
 
-      adminLeadsPanel.innerHTML = data.map(function(l){
+      const exportBar = '<div class="excel-row">' +
+        '<button type="button" class="excel-btn" id="exportLeadsBtn">Export to Excel</button>' +
+        '</div>';
+
+      if (!data.length) { adminLeadsPanel.innerHTML = exportBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No leads yet.</p></div>'; return; }
+
+      const leadCardsHtml = data.map(function(l){
         const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
         return '<div class="lead-card ' + (l.status === 'New Lead' ? 'is-new' : '') + '" data-leadid="' + l.id + '">' +
           '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
@@ -454,6 +488,16 @@
           '</div>';
       }).join('');
 
+      adminLeadsPanel.innerHTML = exportBar + leadCardsHtml;
+
+      document.getElementById('exportLeadsBtn').addEventListener('click', function(){
+        exportToExcel(data.map(l => ({
+          Customer: l.customer_name, Phone: l.phone, Source: l.source, Product: l.product,
+          Description: l.product_desc, Status: l.status, AssignedTo: l.assigned_to,
+          Value: l.expected_value, Notes: l.notes, Date: l.created_at
+        })), 'leads_export.xlsx', 'Leads');
+      });
+
       adminLeadsPanel.querySelectorAll('.admin-lead-save').forEach(function(saveBtn){
         saveBtn.addEventListener('click', async function(){
           const cardEl = saveBtn.closest('.lead-card');
@@ -470,12 +514,48 @@
     };
 
     window.loadAdminUsers = async function(){
-      adminUsersPanel.innerHTML = '<button type="button" class="add-btn" id="addUserBtn">+ Add New User</button><div id="usersList"></div>';
+      adminUsersPanel.innerHTML =
+        '<div class="excel-row">' +
+          '<button type="button" class="excel-btn" id="exportUsersBtn">Export to Excel</button>' +
+          '<label class="excel-btn import">Import from Excel<input type="file" id="importUsersFile" accept=".xlsx,.xls,.csv"></label>' +
+        '</div>' +
+        '<div class="import-msg" id="usersImportMsg"></div>' +
+        '<button type="button" class="add-btn" id="addUserBtn">+ Add New User</button><div id="usersList"></div>';
       document.getElementById('addUserBtn').addEventListener('click', function(){ showUserForm(null); });
 
       const { data, error } = await sb.from('users').select('*').order('name');
       const listEl = document.getElementById('usersList');
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
+
+      document.getElementById('exportUsersBtn').addEventListener('click', function(){
+        exportToExcel((data||[]).map(u => ({
+          name: u.name, mobile: u.mobile, email: u.email, department: u.department,
+          login_id: u.login_id, password: u.password, role: u.role
+        })), 'users_export.xlsx', 'Users');
+      });
+
+      document.getElementById('importUsersFile').addEventListener('change', function(e){
+        const file = e.target.files[0];
+        if (!file) return;
+        const msgEl = document.getElementById('usersImportMsg');
+        msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
+        readExcelFile(file, async function(rows){
+          const cleanRows = rows.map(r => ({
+            name: r.name || r.Name || '',
+            mobile: r.mobile || r.Mobile || '',
+            email: r.email || r.Email || '',
+            department: r.department || r.Department || '',
+            login_id: String(r.login_id || r['Login ID'] || r.LoginID || ''),
+            password: String(r.password || r.Password || ''),
+            role: r.role || r.Role || 'staff'
+          })).filter(r => r.name && r.login_id);
+          if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: name, mobile, email, department, login_id, password, role'; msgEl.className = 'import-msg err'; return; }
+          const { error: impErr } = await sb.from('users').insert(cleanRows);
+          if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
+          msgEl.textContent = cleanRows.length + ' users imported!'; msgEl.className = 'import-msg ok';
+          loadAdminUsers();
+        });
+      });
       listEl.innerHTML = data.map(function(u){
         return '<div class="admin-item" data-id="' + u.id + '">' +
           '<div class="row"><div><div class="title">' + u.name + (u.role==='admin' ? ' (Admin)' : '') + '</div>' +
@@ -511,12 +591,18 @@
       })();
       target.innerHTML =
         '<div class="edit-form">' +
-        '<div class="row2"><input type="text" class="f-name" placeholder="Name" value="' + (user?.name||'') + '">' +
-        '<input type="text" class="f-mobile" placeholder="Mobile" value="' + (user?.mobile||'') + '"></div>' +
-        '<div class="row2"><input type="text" class="f-dept" placeholder="Department" value="' + (user?.department||'') + '">' +
-        '<select class="f-role"><option value="staff"' + (user?.role!=='admin'?' selected':'') + '>Staff</option><option value="admin"' + (user?.role==='admin'?' selected':'') + '>Admin</option></select></div>' +
-        '<div class="row2"><input type="text" class="f-login" placeholder="Login ID" value="' + (user?.login_id||'') + '">' +
-        '<input type="text" class="f-pass" placeholder="Password" value="' + (user?.password||'') + '"></div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Name</span><input type="text" class="f-name" placeholder="Name" value="' + (user?.name||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Mobile</span><input type="text" class="f-mobile" placeholder="Mobile" value="' + (user?.mobile||'') + '"></div>' +
+        '</div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (user?.department||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Role</span><select class="f-role"><option value="staff"' + (user?.role!=='admin'?' selected':'') + '>Staff</option><option value="admin"' + (user?.role==='admin'?' selected':'') + '>Admin</option></select></div>' +
+        '</div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Login ID</span><input type="text" class="f-login" placeholder="Login ID" value="' + (user?.login_id||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Password</span><input type="text" class="f-pass" placeholder="Password" value="' + (user?.password||'') + '"></div>' +
+        '</div>' +
         '<div class="save-row"><button type="button" class="save f-save">Save</button><button type="button" class="cancel f-cancel">Cancel</button></div>' +
         '</div>';
       target.querySelector('.f-cancel').addEventListener('click', function(){ target.innerHTML=''; if(!slotEl) target.remove(); });
@@ -540,12 +626,52 @@
     }
 
     window.loadAdminInventory = async function(){
-      adminInventoryPanel.innerHTML = '<button type="button" class="add-btn" id="addItemBtn">+ Add New Item</button><div id="itemsList"></div>';
+      adminInventoryPanel.innerHTML =
+        '<div class="excel-row">' +
+          '<button type="button" class="excel-btn" id="exportItemsBtn">Export to Excel</button>' +
+          '<label class="excel-btn import">Import from Excel<input type="file" id="importItemsFile" accept=".xlsx,.xls,.csv"></label>' +
+        '</div>' +
+        '<div class="import-msg" id="itemsImportMsg"></div>' +
+        '<button type="button" class="add-btn" id="addItemBtn">+ Add New Item</button><div id="itemsList"></div>';
       document.getElementById('addItemBtn').addEventListener('click', function(){ showItemForm(null); });
 
       const { data, error } = await sb.from('inventory').select('*').order('item_name');
       const listEl = document.getElementById('itemsList');
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
+
+      document.getElementById('exportItemsBtn').addEventListener('click', function(){
+        exportToExcel((data||[]).map(it => ({
+          item_name: it.item_name, category: it.category, unit: it.unit,
+          opening_stock: it.opening_stock, purchased_qty: it.purchased_qty, sold_qty: it.sold_qty,
+          reorder_level: it.reorder_level, unit_price: it.unit_price, department: it.department, supplier: it.supplier
+        })), 'inventory_export.xlsx', 'Inventory');
+      });
+
+      document.getElementById('importItemsFile').addEventListener('change', function(e){
+        const file = e.target.files[0];
+        if (!file) return;
+        const msgEl = document.getElementById('itemsImportMsg');
+        msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
+        readExcelFile(file, async function(rows){
+          const cleanRows = rows.map(r => ({
+            item_name: r.item_name || r['Item Name'] || '',
+            category: r.category || r.Category || '',
+            unit: r.unit || r.Unit || '',
+            opening_stock: Number(r.opening_stock || r['Opening Stock']) || 0,
+            purchased_qty: Number(r.purchased_qty || r['Purchased Qty']) || 0,
+            sold_qty: Number(r.sold_qty || r['Sold Qty']) || 0,
+            reorder_level: Number(r.reorder_level || r['Reorder Level']) || 0,
+            unit_price: r.unit_price || r['Unit Price'] ? Number(r.unit_price || r['Unit Price']) : null,
+            department: r.department || r.Department || '',
+            supplier: r.supplier || r.Supplier || ''
+          })).filter(r => r.item_name);
+          if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: item_name, category, unit, opening_stock, purchased_qty, sold_qty, reorder_level, unit_price, department, supplier'; msgEl.className = 'import-msg err'; return; }
+          const { error: impErr } = await sb.from('inventory').insert(cleanRows);
+          if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
+          msgEl.textContent = cleanRows.length + ' items imported!'; msgEl.className = 'import-msg ok';
+          loadAdminInventory();
+        });
+      });
       listEl.innerHTML = data.map(function(it){
         const stock = (Number(it.opening_stock)||0) + (Number(it.purchased_qty)||0) - (Number(it.sold_qty)||0);
         const low = stock <= (Number(it.reorder_level)||0);
@@ -583,14 +709,22 @@
       })();
       target.innerHTML =
         '<div class="edit-form">' +
-        '<div class="row2"><input type="text" class="f-iname" placeholder="Item Name" value="' + (item?.item_name||'') + '">' +
-        '<input type="text" class="f-dept" placeholder="Department" value="' + (item?.department||'') + '"></div>' +
-        '<div class="row2"><input type="number" class="f-open" placeholder="Opening Stock" value="' + (item?.opening_stock??0) + '">' +
-        '<input type="number" class="f-purch" placeholder="Purchased Qty" value="' + (item?.purchased_qty??0) + '"></div>' +
-        '<div class="row2"><input type="number" class="f-sold" placeholder="Sold Qty" value="' + (item?.sold_qty??0) + '">' +
-        '<input type="number" class="f-reorder" placeholder="Reorder Level" value="' + (item?.reorder_level??0) + '"></div>' +
-        '<div class="row2"><input type="number" class="f-price" placeholder="Unit Price" value="' + (item?.unit_price??'') + '">' +
-        '<input type="text" class="f-supplier" placeholder="Supplier" value="' + (item?.supplier||'') + '"></div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Item Name</span><input type="text" class="f-iname" placeholder="Item Name" value="' + (item?.item_name||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (item?.department||'') + '"></div>' +
+        '</div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Opening Stock</span><input type="number" class="f-open" placeholder="Opening Stock" value="' + (item?.opening_stock??0) + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Purchased Qty</span><input type="number" class="f-purch" placeholder="Purchased Qty" value="' + (item?.purchased_qty??0) + '"></div>' +
+        '</div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Sold Qty</span><input type="number" class="f-sold" placeholder="Sold Qty" value="' + (item?.sold_qty??0) + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Reorder Level</span><input type="number" class="f-reorder" placeholder="Reorder Level" value="' + (item?.reorder_level??0) + '"></div>' +
+        '</div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Unit Price</span><input type="number" class="f-price" placeholder="Unit Price" value="' + (item?.unit_price??'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Supplier</span><input type="text" class="f-supplier" placeholder="Supplier" value="' + (item?.supplier||'') + '"></div>' +
+        '</div>' +
         '<div class="save-row"><button type="button" class="save f-save">Save</button><button type="button" class="cancel f-cancel">Cancel</button></div>' +
         '</div>';
       target.querySelector('.f-cancel').addEventListener('click', function(){ target.innerHTML=''; if(!slotEl) target.remove(); });
