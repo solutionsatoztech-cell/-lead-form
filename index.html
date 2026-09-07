@@ -282,15 +282,17 @@
   </section>
 
   <section id="adminSection" class="hidden">
-    <div class="subtabs">
-      <button type="button" class="subtab-btn active" id="subReportsBtn">Reports</button>
+    <div class="subtabs" style="flex-wrap:wrap;">
+      <button type="button" class="subtab-btn active" id="subDashboardBtn">Dashboard</button>
+      <button type="button" class="subtab-btn" id="subReportsBtn">Reports</button>
       <button type="button" class="subtab-btn" id="subReorderBtn">Reorder</button>
       <button type="button" class="subtab-btn" id="subLeadsBtn">All Leads</button>
       <button type="button" class="subtab-btn" id="subUsersBtn">Users</button>
       <button type="button" class="subtab-btn" id="subInventoryBtn">Inventory</button>
     </div>
 
-    <div id="adminReportsPanel"></div>
+    <div id="adminDashboardPanel"></div>
+    <div id="adminReportsPanel" class="hidden"></div>
     <div id="adminReorderPanel" class="hidden"></div>
     <div id="adminLeadsPanel" class="hidden"></div>
     <div id="adminUsersPanel" class="hidden"></div>
@@ -699,11 +701,13 @@
     });
 
     // ============ ADMIN PANEL ============
+    const subDashboardBtn = document.getElementById('subDashboardBtn');
     const subReportsBtn = document.getElementById('subReportsBtn');
     const subReorderBtn = document.getElementById('subReorderBtn');
     const subLeadsBtn = document.getElementById('subLeadsBtn');
     const subUsersBtn = document.getElementById('subUsersBtn');
     const subInventoryBtn = document.getElementById('subInventoryBtn');
+    const adminDashboardPanel = document.getElementById('adminDashboardPanel');
     const adminReportsPanel = document.getElementById('adminReportsPanel');
     const adminReorderPanel = document.getElementById('adminReorderPanel');
     const adminLeadsPanel = document.getElementById('adminLeadsPanel');
@@ -711,14 +715,16 @@
     const adminInventoryPanel = document.getElementById('adminInventoryPanel');
 
     function activateSub(which){
-      [subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
-      [adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
+      [subDashboardBtn, subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
+      [adminDashboardPanel, adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
+      if (which === 'dashboard') { subDashboardBtn.classList.add('active'); adminDashboardPanel.classList.remove('hidden'); loadAdminDashboard(); }
       if (which === 'reports') { subReportsBtn.classList.add('active'); adminReportsPanel.classList.remove('hidden'); loadAdminReports(); }
       if (which === 'reorder') { subReorderBtn.classList.add('active'); adminReorderPanel.classList.remove('hidden'); loadAdminReorder(); }
       if (which === 'leads') { subLeadsBtn.classList.add('active'); adminLeadsPanel.classList.remove('hidden'); loadAdminLeads(); }
       if (which === 'users') { subUsersBtn.classList.add('active'); adminUsersPanel.classList.remove('hidden'); loadAdminUsers(); }
       if (which === 'inventory') { subInventoryBtn.classList.add('active'); adminInventoryPanel.classList.remove('hidden'); loadAdminInventory(); }
     }
+    subDashboardBtn.addEventListener('click', function(){ activateSub('dashboard'); });
     subReportsBtn.addEventListener('click', function(){ activateSub('reports'); });
     subReorderBtn.addEventListener('click', function(){ activateSub('reorder'); });
     subLeadsBtn.addEventListener('click', function(){ activateSub('leads'); });
@@ -730,16 +736,87 @@
       const canLeads = isAdmin || currentUser.perm_leads;
       const canUsers = isAdmin || currentUser.perm_users;
       const canInventory = isAdmin || currentUser.perm_inventory;
+      subDashboardBtn.classList.toggle('hidden', !isAdmin);
       subReportsBtn.classList.toggle('hidden', !isAdmin);
       subReorderBtn.classList.toggle('hidden', !canInventory);
       subLeadsBtn.classList.toggle('hidden', !canLeads);
       subUsersBtn.classList.toggle('hidden', !canUsers);
       subInventoryBtn.classList.toggle('hidden', !canInventory);
-      if (isAdmin) activateSub('reports');
+      if (isAdmin) activateSub('dashboard');
       else if (canInventory) activateSub('reorder');
       else if (canLeads) activateSub('leads');
       else if (canUsers) activateSub('users');
     }
+
+    window.loadAdminDashboard = async function(){
+      adminDashboardPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+
+      const [{ data: leads }, { data: items }, { data: allTxns }, { data: pOrders }, { data: sOrders }] = await Promise.all([
+        sb.from('leads').select('*'),
+        sb.from('inventory').select('*'),
+        sb.from('stock_transactions').select('*'),
+        sb.from('purchase_orders').select('*'),
+        sb.from('sales_orders').select('*')
+      ]);
+
+      const totalLeads = (leads || []).length;
+      const newLeads = (leads || []).filter(l => l.status === 'New Lead').length;
+
+      const stockMap = {};
+      (allTxns || []).forEach(function(t){
+        const q = Number(t.quantity) || 0;
+        stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+      });
+      const itemsByIdD = {};
+      (items || []).forEach(function(it){ itemsByIdD[it.id] = it; });
+      const lowStockItems = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0));
+      let totalStockValue = 0;
+      (items || []).forEach(function(it){ totalStockValue += (stockMap[it.id] || 0) * (Number(it.unit_price)||0); });
+
+      const pendingPOs = (pOrders || []).filter(o => o.status !== 'Completed');
+      const pendingSOs = (sOrders || []).filter(o => o.status !== 'Completed');
+      const totalPendingPOQty = pendingPOs.reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0), 0);
+      const totalPendingSOQty = pendingSOs.reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0), 0);
+
+      function miniList(rows, emptyMsg){
+        if (!rows.length) return '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">' + emptyMsg + '</p>';
+        return rows.map(r => '<div class="user-stat-row"><span>' + r[0] + '</span><span class="cnt">' + r[1] + '</span></div>').join('');
+      }
+
+      const reorderMini = lowStockItems.slice(0, 5).map(it => [it.item_name, 'Stock ' + (stockMap[it.id]||0) + ' / Reorder ' + (it.reorder_level||0)]);
+      const poMini = pendingPOs.slice(0, 5).map(function(o){
+        const it = itemsByIdD[o.item_id];
+        const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0);
+        return [(it ? it.item_name : 'Item') + ' (' + (o.vendor||'-') + ')', pending + ' pending'];
+      });
+      const soMini = pendingSOs.slice(0, 5).map(function(o){
+        const it = itemsByIdD[o.item_id];
+        const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0);
+        return [(it ? it.item_name : 'Item') + ' (' + (o.customer_name||'-') + ')', pending + ' pending'];
+      });
+
+      adminDashboardPanel.innerHTML =
+        '<div class="dashboard-header"><h2>Business Dashboard</h2><p>One-page overview of Leads, Inventory, Reorder and Orders.</p></div>' +
+        '<div class="stat-grid">' +
+          '<div class="stat-box amber"><div class="num">' + newLeads + '</div><div class="lbl">New Leads</div></div>' +
+          '<div class="stat-box"><div class="num">' + totalLeads + '</div><div class="lbl">Total Leads</div></div>' +
+          '<div class="stat-box err"><div class="num">' + lowStockItems.length + '</div><div class="lbl">Low Stock Items</div></div>' +
+          '<div class="stat-box ok"><div class="num">Rs.' + totalStockValue.toLocaleString('en-IN') + '</div><div class="lbl">Stock Value</div></div>' +
+        '</div>' +
+        '<div class="stat-grid">' +
+          '<div class="stat-box amber"><div class="num">' + pendingPOs.length + '</div><div class="lbl">Pending Purchase Orders</div></div>' +
+          '<div class="stat-box"><div class="num">' + totalPendingPOQty + '</div><div class="lbl">Pending Purchase Qty</div></div>' +
+          '<div class="stat-box amber"><div class="num">' + pendingSOs.length + '</div><div class="lbl">Pending Sales Orders</div></div>' +
+          '<div class="stat-box"><div class="num">' + totalPendingSOQty + '</div><div class="lbl">Pending Sales Qty</div></div>' +
+        '</div>' +
+        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Top Reorder Alerts</div><button type="button" class="icon-btn" id="dashGoReorder">View All</button></div>' + miniList(reorderMini, 'All items well stocked.') + '</div>' +
+        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Pending Purchase Orders</div><button type="button" class="icon-btn" id="dashGoInvPO">View All</button></div>' + miniList(poMini, 'No pending purchase orders.') + '</div>' +
+        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Pending Sales Orders</div><button type="button" class="icon-btn" id="dashGoInvSO">View All</button></div>' + miniList(soMini, 'No pending sales orders.') + '</div>';
+
+      document.getElementById('dashGoReorder').addEventListener('click', function(){ activateSub('reorder'); });
+      document.getElementById('dashGoInvPO').addEventListener('click', function(){ activateSub('inventory'); });
+      document.getElementById('dashGoInvSO').addEventListener('click', function(){ activateSub('inventory'); });
+    };
 
     window.loadAdminReorder = async function(){
       adminReorderPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
