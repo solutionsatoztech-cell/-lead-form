@@ -110,6 +110,19 @@
   .user-stat-row{display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
   .user-stat-row:last-child{border-bottom:none;}
   .user-stat-row .cnt{font-weight:800; color:var(--navy-dark);}
+  #phoneHistory{margin-top:8px;}
+  .history-box{background:#FFF8EF; border:1.5px solid var(--amber); border-radius:10px; padding:10px 12px; font-size:12.5px;}
+  .history-box .htitle{font-weight:800; color:var(--amber-dark); margin-bottom:6px;}
+  .history-row{padding:4px 0; border-bottom:1px dashed #EED9B8; color:var(--text);}
+  .history-row:last-child{border-bottom:none;}
+  .filter-bar{display:flex; gap:8px; margin-bottom:12px;}
+  .filter-bar select{flex:1;}
+  .cust-checkbox{margin-right:8px; width:16px; height:16px; vertical-align:middle;}
+  .bulk-wa-card{background:#F0FBF2; border:1.5px solid #B7E5C6; border-radius:12px; padding:14px; margin-bottom:16px;}
+  .bulk-wa-card textarea{min-height:70px;}
+  .bulk-wa-hint{font-size:11.5px; color:var(--muted); margin:4px 0 10px;}
+  .bulk-send-btn{width:100%; padding:11px; border:none; border-radius:9px; background:var(--wa); color:#fff; font-weight:800; font-size:13.5px; cursor:pointer;}
+  .bulk-send-btn:disabled{background:#C9CDD2;}
   .mini-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em;margin-bottom:4px;display:block;}
   .field-block{margin-bottom:0;}
   .excel-row{display:flex;gap:8px;margin-bottom:14px;}
@@ -165,6 +178,7 @@
         <div class="field">
           <label>Phone Number <span class="req">*</span></label>
           <input type="tel" id="phone" inputmode="numeric" required>
+          <div id="phoneHistory"></div>
         </div>
         <div class="field">
           <label>Lead Source</label>
@@ -362,54 +376,127 @@
         .order('created_at', { ascending: false });
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
 
-      const addBar = '<button type="button" class="add-btn" id="addCustomerBtn" style="margin-bottom:14px;">+ Add New Customer</button>';
+      const topBar =
+        '<button type="button" class="add-btn" id="addCustomerBtn" style="margin-bottom:14px;">+ Add New Customer</button>' +
+        '<div class="filter-bar">' +
+          '<select id="custStatusFilter"><option value="">All Statuses</option>' +
+          stepsListGlobal.map(s => '<option value="' + s + '">' + s + '</option>').join('') +
+          '</select>' +
+        '</div>' +
+        '<div class="bulk-wa-card">' +
+          '<span class="mini-label">WhatsApp Message Template</span>' +
+          '<textarea id="bulkWaTemplate" placeholder="Hello {name}, ...use {product} and {status} too">Hello {name}, following up on your enquiry for {product}. Let us know if you have any questions!</textarea>' +
+          '<div class="bulk-wa-hint">Placeholders: {name}, {product}, {status}. Select customers below, then send one by one.</div>' +
+          '<button type="button" class="bulk-send-btn" id="bulkSendBtn">Send WhatsApp to Selected (0)</button>' +
+        '</div>' +
+        '<div id="customersListInner"></div>';
 
-      if (!data || !data.length) { listEl.innerHTML = addBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers yet.</p></div>'; document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); }); return; }
-
-      listEl.innerHTML = addBar + data.map(function(l){
-        const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-        const untouched = l.status === 'New Lead';
-        const roleTag = l.created_by === currentUser.name && l.assigned_to === currentUser.name ? 'Created & Assigned to you'
-          : l.created_by === currentUser.name ? 'Created by you'
-          : 'Assigned to you';
-        return '<div class="lead-card ' + (untouched ? 'is-new' : '') + '" data-custid="' + l.id + '">' +
-          '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
-          '<span class="badge ' + (untouched ? 'new' : '') + '">' + l.status + '</span></div>' +
-          '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
-          '<div class="meta">' + dateStr + ' &middot; ' + roleTag + (untouched ? ' &middot; <b style="color:var(--amber-dark);">No action taken yet</b>' : '') + '</div>' +
-          '<div class="lead-actions">' +
-            '<div class="row2">' +
-              '<a href="tel:' + l.phone + '" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;">Call</a>' +
-              '<a href="https://wa.me/' + toWaNumber(l.phone) + '" target="_blank" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;color:var(--wa);border-color:#B7E5C6;">WhatsApp</a>' +
-            '</div>' +
-            '<div class="row2">' +
-              '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
-              '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="edit-slot"></div>' +
-          '</div>';
-      }).join('');
-
+      listEl.innerHTML = topBar;
       document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); });
 
-      listEl.querySelectorAll('.edit-customer').forEach(function(b){
-        b.addEventListener('click', function(){
-          const card = b.closest('.lead-card');
+      const innerEl = document.getElementById('customersListInner');
+      const statusFilter = document.getElementById('custStatusFilter');
+      const bulkBtn = document.getElementById('bulkSendBtn');
+      let waQueue = [];
+
+      function renderList(){
+        const filterVal = statusFilter.value;
+        const filtered = filterVal ? data.filter(l => l.status === filterVal) : data;
+
+        if (!filtered.length) {
+          innerEl.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers match this filter.</p></div>';
+          updateBulkBtn();
+          return;
+        }
+
+        innerEl.innerHTML = filtered.map(function(l){
+          const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+          const untouched = l.status === 'New Lead';
+          const roleTag = l.created_by === currentUser.name && l.assigned_to === currentUser.name ? 'Created & Assigned to you'
+            : l.created_by === currentUser.name ? 'Created by you'
+            : 'Assigned to you';
+          return '<div class="lead-card ' + (untouched ? 'is-new' : '') + '" data-custid="' + l.id + '">' +
+            '<div class="row"><span><input type="checkbox" class="cust-checkbox cust-select"><span class="cname">' + l.customer_name + '</span></span>' +
+            '<span class="badge ' + (untouched ? 'new' : '') + '">' + l.status + '</span></div>' +
+            '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
+            '<div class="meta">' + dateStr + ' &middot; ' + roleTag + (untouched ? ' &middot; <b style="color:var(--amber-dark);">No action taken yet</b>' : '') + '</div>' +
+            '<div class="lead-actions">' +
+              '<div class="row2">' +
+                '<a href="tel:' + l.phone + '" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;">Call</a>' +
+                '<a href="https://wa.me/' + toWaNumber(l.phone) + '" target="_blank" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;color:var(--wa);border-color:#B7E5C6;">WhatsApp</a>' +
+              '</div>' +
+              '<div class="row2">' +
+                '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
+                '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
+              '</div>' +
+            '</div>' +
+            '<div class="edit-slot"></div>' +
+            '</div>';
+        }).join('');
+
+        innerEl.querySelectorAll('.cust-select').forEach(function(cb){
+          cb.addEventListener('change', updateBulkBtn);
+        });
+        innerEl.querySelectorAll('.edit-customer').forEach(function(b){
+          b.addEventListener('click', function(){
+            const card = b.closest('.lead-card');
+            const id = card.getAttribute('data-custid');
+            const lead = data.find(x => String(x.id) === id);
+            showCustomerEditForm(lead, card.querySelector('.edit-slot'));
+          });
+        });
+        innerEl.querySelectorAll('.del-customer').forEach(function(b){
+          b.addEventListener('click', async function(){
+            if (!confirm('Delete this customer/lead? This cannot be undone.')) return;
+            const card = b.closest('.lead-card');
+            const id = card.getAttribute('data-custid');
+            await sb.from('leads').delete().eq('id', id);
+            loadCustomers();
+          });
+        });
+        updateBulkBtn();
+      }
+
+      function updateBulkBtn(){
+        const checked = innerEl.querySelectorAll('.cust-select:checked').length;
+        bulkBtn.textContent = 'Send WhatsApp to Selected (' + checked + ')';
+        bulkBtn.disabled = checked === 0;
+      }
+
+      bulkBtn.addEventListener('click', function(){
+        const template = document.getElementById('bulkWaTemplate').value.trim() || 'Hello {name}!';
+        const cards = innerEl.querySelectorAll('.lead-card');
+        waQueue = [];
+        cards.forEach(function(card){
+          const cb = card.querySelector('.cust-select');
+          if (!cb.checked) return;
           const id = card.getAttribute('data-custid');
           const lead = data.find(x => String(x.id) === id);
-          showCustomerEditForm(lead, card.querySelector('.edit-slot'));
+          const msg = template
+            .replace(/{name}/g, lead.customer_name || '')
+            .replace(/{product}/g, lead.product || '')
+            .replace(/{status}/g, lead.status || '');
+          waQueue.push({ phone: lead.phone, msg: msg, name: lead.customer_name });
         });
+        if (!waQueue.length) return;
+        sendNextInQueue();
       });
-      listEl.querySelectorAll('.del-customer').forEach(function(b){
-        b.addEventListener('click', async function(){
-          if (!confirm('Delete this customer/lead? This cannot be undone.')) return;
-          const card = b.closest('.lead-card');
-          const id = card.getAttribute('data-custid');
-          await sb.from('leads').delete().eq('id', id);
-          loadCustomers();
-        });
-      });
+
+      function sendNextInQueue(){
+        if (!waQueue.length) {
+          bulkBtn.textContent = 'All messages opened!';
+          setTimeout(updateBulkBtn, 2000);
+          return;
+        }
+        const next = waQueue.shift();
+        const link = 'https://wa.me/' + toWaNumber(next.phone) + '?text=' + encodeURIComponent(next.msg);
+        window.open(link, '_blank');
+        bulkBtn.textContent = 'Opened ' + next.name + ' \u2014 Click for Next (' + waQueue.length + ' left)';
+        bulkBtn.onclick = sendNextInQueue;
+      }
+
+      statusFilter.addEventListener('change', renderList);
+      renderList();
     };
 
     function showCustomerEditForm(lead, slotEl){
@@ -463,6 +550,21 @@
       if (!item || !item.department) return;
       const match = usersListGlobal.find(u => u.department === item.department);
       if (match) assignSelect.value = match.name;
+    });
+
+    const phoneInput = document.getElementById('phone');
+    const phoneHistoryEl = document.getElementById('phoneHistory');
+    phoneInput.addEventListener('blur', async function(){
+      const ph = phoneInput.value.trim();
+      phoneHistoryEl.innerHTML = '';
+      if (ph.length < 8) return;
+      const { data } = await sb.from('leads').select('customer_name, product, status, expected_value, created_at').eq('phone', ph).order('created_at', { ascending: false });
+      if (!data || !data.length) return;
+      const rows = data.map(function(l){
+        const d = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+        return '<div class="history-row">' + d + ' &middot; ' + (l.product || 'No product') + ' &middot; <b>' + l.status + '</b>' + (l.expected_value ? (' &middot; Rs.' + l.expected_value) : '') + '</div>';
+      }).join('');
+      phoneHistoryEl.innerHTML = '<div class="history-box"><div class="htitle">Existing Customer &mdash; ' + data.length + ' previous lead(s)</div>' + rows + '</div>';
     });
 
     async function loadUsers(){
