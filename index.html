@@ -1157,34 +1157,197 @@
 
     window.loadAdminInventory = function(){
       adminInventoryPanel.innerHTML =
-        '<div class="subtabs">' +
+        '<div class="subtabs" style="flex-wrap:wrap;">' +
           '<button type="button" class="subtab-btn active" id="invSubItemsBtn">Items</button>' +
           '<button type="button" class="subtab-btn" id="invSubPurchaseBtn">Purchases</button>' +
           '<button type="button" class="subtab-btn" id="invSubSalesBtn">Sales</button>' +
+          '<button type="button" class="subtab-btn" id="invSubPOBtn">Purchase Orders</button>' +
+          '<button type="button" class="subtab-btn" id="invSubSOBtn">Sales Orders</button>' +
         '</div>' +
         '<div id="invItemsPanel"></div>' +
         '<div id="invPurchasePanel" class="hidden"></div>' +
-        '<div id="invSalesPanel" class="hidden"></div>';
+        '<div id="invSalesPanel" class="hidden"></div>' +
+        '<div id="invPOPanel" class="hidden"></div>' +
+        '<div id="invSOPanel" class="hidden"></div>';
 
       const invItemsBtn = document.getElementById('invSubItemsBtn');
       const invPurchaseBtn = document.getElementById('invSubPurchaseBtn');
       const invSalesBtn = document.getElementById('invSubSalesBtn');
+      const invPOBtn = document.getElementById('invSubPOBtn');
+      const invSOBtn = document.getElementById('invSubSOBtn');
       const invItemsPanel = document.getElementById('invItemsPanel');
       const invPurchasePanel = document.getElementById('invPurchasePanel');
       const invSalesPanel = document.getElementById('invSalesPanel');
+      const invPOPanel = document.getElementById('invPOPanel');
+      const invSOPanel = document.getElementById('invSOPanel');
 
       function activateInvSub(which){
-        [invItemsBtn, invPurchaseBtn, invSalesBtn].forEach(b => b.classList.remove('active'));
-        [invItemsPanel, invPurchasePanel, invSalesPanel].forEach(p => p.classList.add('hidden'));
+        [invItemsBtn, invPurchaseBtn, invSalesBtn, invPOBtn, invSOBtn].forEach(b => b.classList.remove('active'));
+        [invItemsPanel, invPurchasePanel, invSalesPanel, invPOPanel, invSOPanel].forEach(p => p.classList.add('hidden'));
         if (which === 'items') { invItemsBtn.classList.add('active'); invItemsPanel.classList.remove('hidden'); loadInventoryItems(); }
         if (which === 'purchase') { invPurchaseBtn.classList.add('active'); invPurchasePanel.classList.remove('hidden'); loadInventoryLedger('purchase'); }
         if (which === 'sales') { invSalesBtn.classList.add('active'); invSalesPanel.classList.remove('hidden'); loadInventoryLedger('sale'); }
+        if (which === 'po') { invPOBtn.classList.add('active'); invPOPanel.classList.remove('hidden'); loadOrders('purchase'); }
+        if (which === 'so') { invSOBtn.classList.add('active'); invSOPanel.classList.remove('hidden'); loadOrders('sale'); }
       }
       invItemsBtn.addEventListener('click', function(){ activateInvSub('items'); });
       invPurchaseBtn.addEventListener('click', function(){ activateInvSub('purchase'); });
       invSalesBtn.addEventListener('click', function(){ activateInvSub('sales'); });
+      invPOBtn.addEventListener('click', function(){ activateInvSub('po'); });
+      invSOBtn.addEventListener('click', function(){ activateInvSub('so'); });
       activateInvSub('items');
     };
+
+    async function loadOrders(kind){
+      const table = kind === 'purchase' ? 'purchase_orders' : 'sales_orders';
+      const panelEl = document.getElementById(kind === 'purchase' ? 'invPOPanel' : 'invSOPanel');
+      panelEl.innerHTML =
+        '<div class="subtabs">' +
+          '<button type="button" class="subtab-btn active" id="ordAddTabBtn-' + kind + '">+ Add Order</button>' +
+          '<button type="button" class="subtab-btn" id="ordListTabBtn-' + kind + '">Order List</button>' +
+        '</div>' +
+        '<div id="ordAddSection-' + kind + '"></div>' +
+        '<div id="ordListSection-' + kind + '" class="hidden"></div>';
+
+      const addTabBtn = document.getElementById('ordAddTabBtn-' + kind);
+      const listTabBtn = document.getElementById('ordListTabBtn-' + kind);
+      const addSection = document.getElementById('ordAddSection-' + kind);
+      const listSection = document.getElementById('ordListSection-' + kind);
+
+      addTabBtn.addEventListener('click', function(){
+        addTabBtn.classList.add('active'); listTabBtn.classList.remove('active');
+        addSection.classList.remove('hidden'); listSection.classList.add('hidden');
+      });
+      listTabBtn.addEventListener('click', function(){
+        listTabBtn.classList.add('active'); addTabBtn.classList.remove('active');
+        listSection.classList.remove('hidden'); addSection.classList.add('hidden');
+        renderOrderList();
+      });
+
+      const { data: items } = await sb.from('inventory').select('id, item_name');
+
+      addSection.innerHTML =
+        '<div class="card" style="padding:14px;">' +
+          '<span class="mini-label">New ' + (kind === 'purchase' ? 'Purchase Order (to Vendor)' : 'Sales Order (from Customer)') + '</span>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<select id="ordItemSelect">' +
+              '<option value="">-- Select Item --</option>' +
+              (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('') +
+            '</select>' +
+            '<input type="number" id="ordQty" placeholder="Ordered Quantity">' +
+          '</div>' +
+          '<input type="text" id="ordParty" placeholder="' + (kind === 'purchase' ? 'Vendor Name' : 'Customer Name') + '" style="margin-top:8px;">' +
+          '<input type="text" id="ordNote" placeholder="Optional note" style="margin-top:8px;">' +
+          '<button type="button" class="add-btn" id="ordSaveBtn" style="margin-top:8px;">Save Order</button>' +
+          '<div class="import-msg" id="ordSaveMsg"></div>' +
+        '</div>';
+
+      document.getElementById('ordSaveBtn').addEventListener('click', async function(){
+        const itemId = document.getElementById('ordItemSelect').value;
+        const qty = Number(document.getElementById('ordQty').value);
+        const party = document.getElementById('ordParty').value.trim();
+        const note = document.getElementById('ordNote').value.trim();
+        const msgEl = document.getElementById('ordSaveMsg');
+        if (!itemId) { alert('Select an item'); return; }
+        if (!qty || qty <= 0) { alert('Enter a valid ordered quantity'); return; }
+        const entry = { item_id: itemId, ordered_qty: qty, note: note, created_by: currentUser.name, status: 'Open' };
+        if (kind === 'purchase') entry.vendor = party; else entry.customer_name = party;
+        const { error } = await sb.from(table).insert(entry);
+        if (error) { msgEl.textContent = error.message; msgEl.className = 'import-msg err'; return; }
+        msgEl.textContent = 'Order saved!'; msgEl.className = 'import-msg ok';
+        document.getElementById('ordQty').value = '';
+        document.getElementById('ordParty').value = '';
+        document.getElementById('ordNote').value = '';
+        setTimeout(function(){ listTabBtn.click(); }, 600);
+      });
+
+      async function renderOrderList(){
+        listSection.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+        const [{ data: orders }, { data: allItems }] = await Promise.all([
+          sb.from(table).select('*').order('created_at', { ascending: false }),
+          sb.from('inventory').select('id, item_name')
+        ]);
+        const itemsById2 = {};
+        (allItems || []).forEach(function(it){ itemsById2[it.id] = it; });
+
+        const openCount = (orders || []).filter(o => o.status !== 'Completed').length;
+        const totalPending = (orders || []).reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(kind === 'purchase' ? o.received_qty : o.delivered_qty)||0), 0), 0);
+
+        const summaryHtml =
+          '<div class="stat-grid">' +
+            '<div class="stat-box amber"><div class="num">' + openCount + '</div><div class="lbl">Open / Partial Orders</div></div>' +
+            '<div class="stat-box err"><div class="num">' + totalPending + '</div><div class="lbl">Total Pending Qty</div></div>' +
+          '</div>';
+
+        if (!orders || !orders.length) {
+          listSection.innerHTML = summaryHtml + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No orders yet.</p></div>';
+          return;
+        }
+
+        const itemsHtml = orders.map(function(o){
+          const it = itemsById2[o.item_id];
+          const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
+          const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
+          const party = kind === 'purchase' ? o.vendor : o.customer_name;
+          const d = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+          const dispatchTxt = o.dispatch_date
+            ? ('Dispatched: ' + new Date(o.dispatch_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }))
+            : 'Not dispatched yet';
+          const statusClass = o.status === 'Completed' ? 'ok' : (o.status === 'Partial' ? 'watch' : 'low');
+          return '<div class="reorder-item priority-' + (o.status === 'Completed' ? '' : statusClass) + '" data-orderid="' + o.id + '" style="' + (o.status === 'Completed' ? 'border-left-color:var(--ok);' : '') + '">' +
+            '<div class="r-top">' +
+              '<div><div class="r-name">' + (it ? it.item_name : 'Item') + '</div><div class="r-sku">' + (party || 'No name') + ' &middot; Order Date: ' + d + '</div></div>' +
+              '<span class="priority-badge ' + (o.status === 'Completed' ? 'watch' : statusClass) + '" style="' + (o.status === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : '') + '">' + o.status + '</span>' +
+            '</div>' +
+            '<div class="reorder-metrics">' +
+              '<div class="reorder-metric"><div class="rm-num">' + o.ordered_qty + '</div><div class="rm-lbl">Ordered</div></div>' +
+              '<div class="reorder-metric"><div class="rm-num">' + fulfilled + '</div><div class="rm-lbl">' + (kind === 'purchase' ? 'Received' : 'Delivered') + '</div></div>' +
+              '<div class="reorder-metric"><div class="rm-num">' + pending + '</div><div class="rm-lbl">Pending</div></div>' +
+            '</div>' +
+            '<div class="reorder-vendor">Taken by: <b>' + (o.created_by || 'Unknown') + '</b> &middot; ' + dispatchTxt + '</div>' +
+            (o.note ? '<div class="reorder-vendor">' + o.note + '</div>' : '') +
+            (pending > 0 ?
+              '<div class="quick-purchase-row">' +
+                '<input type="number" class="convert-qty" placeholder="Qty ' + (kind === 'purchase' ? 'received' : 'delivered') + ' now" value="' + pending + '">' +
+                '<button type="button" class="convert-btn">Convert to ' + (kind === 'purchase' ? 'Purchase' : 'Sale') + '</button>' +
+              '</div>'
+              : '<div class="reorder-vendor" style="color:var(--ok);font-weight:700;">Fully completed</div>') +
+            '<div class="lead-msg"></div>' +
+          '</div>';
+        }).join('');
+
+        listSection.innerHTML = summaryHtml + itemsHtml;
+
+        listSection.querySelectorAll('.convert-btn').forEach(function(btn){
+          btn.addEventListener('click', async function(){
+            const card = btn.closest('.reorder-item');
+            const orderId = card.getAttribute('data-orderid');
+            const order = orders.find(o => String(o.id) === orderId);
+            const qtyNow = Number(card.querySelector('.convert-qty').value);
+            const msgEl = card.querySelector('.lead-msg');
+            if (!qtyNow || qtyNow <= 0) { alert('Enter a valid quantity'); return; }
+            btn.disabled = true; btn.textContent = 'Saving...';
+
+            const txnType = kind === 'purchase' ? 'purchase' : 'sale';
+            const txnEntry = { item_id: order.item_id, type: txnType, quantity: qtyNow, note: 'From order #' + order.id };
+            if (kind === 'purchase') txnEntry.vendor = order.vendor;
+            await sb.from('stock_transactions').insert(txnEntry);
+
+            const newFulfilled = (Number(kind === 'purchase' ? order.received_qty : order.delivered_qty) || 0) + qtyNow;
+            const newStatus = newFulfilled >= Number(order.ordered_qty) ? 'Completed' : 'Partial';
+            const updatePayload = { status: newStatus };
+            if (kind === 'purchase') updatePayload.received_qty = newFulfilled; else updatePayload.delivered_qty = newFulfilled;
+            if (!order.dispatch_date) updatePayload.dispatch_date = new Date().toISOString();
+            await sb.from(table).update(updatePayload).eq('id', orderId);
+
+            msgEl.textContent = 'Converted successfully!'; msgEl.className = 'lead-msg ok';
+            setTimeout(renderOrderList, 800);
+          });
+        });
+      }
+
+      renderOrderList();
+    }
 
     async function loadInventoryLedger(type){
       const panelEl = type === 'purchase' ? document.getElementById('invPurchasePanel') : document.getElementById('invSalesPanel');
@@ -1263,15 +1426,37 @@
           '<label class="excel-btn import">Import from Excel<input type="file" id="importItemsFile" accept=".xlsx,.xls,.csv"></label>' +
         '</div>' +
         '<div class="import-msg" id="itemsImportMsg"></div>' +
-        '<div class="card" style="padding:14px;">' +
-          '<div class="field-block" style="margin-bottom:10px;"><span class="mini-label">Search Item Name</span><input type="text" id="filterItemName" placeholder="Type to search..."></div>' +
-          '<div class="row2">' +
-            '<div class="field-block"><span class="mini-label">Item Group</span><select id="filterItemGroup"><option value="">All Groups</option></select></div>' +
-            '<div class="field-block"><span class="mini-label">Vendor</span><select id="filterVendor"><option value="">All Vendors</option></select></div>' +
-          '</div>' +
+        '<div class="subtabs">' +
+          '<button type="button" class="subtab-btn" id="itemsAddTabBtn">+ Add Item</button>' +
+          '<button type="button" class="subtab-btn active" id="itemsListTabBtn">Item List</button>' +
         '</div>' +
-        '<button type="button" class="add-btn" id="addItemBtn">+ Add New Item</button><div id="itemsList"></div>';
-      document.getElementById('addItemBtn').addEventListener('click', function(){ showItemForm(null); });
+        '<div id="itemsAddSection" class="hidden"><div id="itemsAddFormSlot"></div></div>' +
+        '<div id="itemsListSection">' +
+          '<div class="card" style="padding:14px;">' +
+            '<div class="field-block" style="margin-bottom:10px;"><span class="mini-label">Search Item Name</span><input type="text" id="filterItemName" placeholder="Type to search..."></div>' +
+            '<div class="row2">' +
+              '<div class="field-block"><span class="mini-label">Item Group</span><select id="filterItemGroup"><option value="">All Groups</option></select></div>' +
+              '<div class="field-block"><span class="mini-label">Vendor</span><select id="filterVendor"><option value="">All Vendors</option></select></div>' +
+            '</div>' +
+          '</div>' +
+          '<div id="itemsList"></div>' +
+        '</div>';
+
+      const itemsAddTabBtn = document.getElementById('itemsAddTabBtn');
+      const itemsListTabBtn = document.getElementById('itemsListTabBtn');
+      const itemsAddSection = document.getElementById('itemsAddSection');
+      const itemsListSection = document.getElementById('itemsListSection');
+
+      itemsAddTabBtn.addEventListener('click', function(){
+        itemsAddTabBtn.classList.add('active'); itemsListTabBtn.classList.remove('active');
+        itemsAddSection.classList.remove('hidden'); itemsListSection.classList.add('hidden');
+        document.getElementById('itemsAddFormSlot').innerHTML = '';
+        showItemForm(null, document.getElementById('itemsAddFormSlot'));
+      });
+      itemsListTabBtn.addEventListener('click', function(){
+        itemsListTabBtn.classList.add('active'); itemsAddTabBtn.classList.remove('active');
+        itemsListSection.classList.remove('hidden'); itemsAddSection.classList.add('hidden');
+      });
 
       const [{ data, error }, { data: txns }] = await Promise.all([
         sb.from('inventory').select('*').order('item_name'),
@@ -1359,7 +1544,7 @@
           const suggestedQty = low ? Math.max(reorderLvl * 2 - stock, reorderLvl - stock, 1) : 0;
           return '<div class="admin-item" data-id="' + it.id + '">' +
             '<div class="row"><div><div class="title">' + (it.sku_code ? it.sku_code + ' &middot; ' : '') + it.item_name + '</div>' +
-            '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + ' / Reorder Level: ' + reorderLvl + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + '</div>' +
+            '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + ' / Reorder Level: ' + reorderLvl + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; Rs.' + (it.unit_price||0) + '</div>' +
             '<div class="sub">' + lastPurchaseTxt + '</div>' +
             (low ? '<div class="sub" style="color:var(--err);font-weight:700;">Suggested Purchase Qty: ' + suggestedQty + ' units</div>' : '') +
             '</div>' +
@@ -1448,7 +1633,12 @@
         '</div>' +
         '<div class="save-row"><button type="button" class="save f-save">Save</button><button type="button" class="cancel f-cancel">Cancel</button></div>' +
         '</div>';
-      target.querySelector('.f-cancel').addEventListener('click', function(){ target.innerHTML=''; if(!slotEl) target.remove(); });
+      target.querySelector('.f-cancel').addEventListener('click', function(){
+        target.innerHTML='';
+        if(!slotEl) target.remove();
+        const listTabBtn = document.getElementById('itemsListTabBtn');
+        if (!item && listTabBtn) listTabBtn.click();
+      });
       target.querySelector('.f-save').addEventListener('click', async function(){
         const payload = {
           sku_code: target.querySelector('.f-sku').value.trim(),
