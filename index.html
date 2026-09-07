@@ -158,6 +158,15 @@
   .dashboard-header{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dark) 100%); border-radius:16px; padding:20px; margin-bottom:16px; color:#fff;}
   .dashboard-header h2{margin:0 0 4px; font-size:19px; font-weight:800;}
   .dashboard-header p{margin:0; font-size:12.5px; color:#BFE0C2;}
+
+  .table-wrap{overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:10px; border:1px solid var(--line);}
+  .data-table{width:100%; border-collapse:collapse; font-size:12px; background:#fff;}
+  .data-table th{background:#F4FAF4; color:var(--navy-dark); font-weight:800; padding:9px 10px; text-align:left; white-space:nowrap; border-bottom:2px solid var(--line);}
+  .data-table td{padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; color:var(--text);}
+  .data-table tr:last-child td{border-bottom:none;}
+  .data-table tr:hover td{background:#FAFDFA;}
+  .table-export-row{display:flex; justify-content:flex-end; margin-bottom:8px;}
+  .table-export-btn{padding:7px 14px; border-radius:8px; border:1.5px solid var(--navy); background:#fff; color:var(--navy); font-weight:700; font-size:11.5px; cursor:pointer;}
   .mini-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em;margin-bottom:4px;display:block;}
   .field-block{margin-bottom:0;}
   .excel-row{display:flex;gap:8px;margin-bottom:14px;}
@@ -835,11 +844,13 @@
     window.loadAdminReports = async function(){
       adminReportsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
-      const [{ data: leads }, { data: logs }, { data: items }, { data: allTxns }] = await Promise.all([
+      const [{ data: leads }, { data: logs }, { data: items }, { data: allTxns }, { data: pOrders }, { data: sOrders }] = await Promise.all([
         sb.from('leads').select('*'),
         sb.from('lead_log').select('*').order('created_at', { ascending: false }).limit(20),
         sb.from('inventory').select('*'),
-        sb.from('stock_transactions').select('*').order('created_at', { ascending: false })
+        sb.from('stock_transactions').select('*').order('created_at', { ascending: false }),
+        sb.from('purchase_orders').select('*').order('created_at', { ascending: false }),
+        sb.from('sales_orders').select('*').order('created_at', { ascending: false })
       ]);
       const txns = (allTxns || []).slice(0, 20);
 
@@ -873,21 +884,22 @@
         const u = l.assigned_to || 'Unassigned';
         byUser[u] = (byUser[u] || 0) + 1;
       });
-      const userStatsHtml = Object.keys(byUser).sort((a,b) => byUser[b]-byUser[a]).map(function(u){
-        return '<div class="user-stat-row"><span>' + u + '</span><span class="cnt">' + byUser[u] + ' leads</span></div>';
-      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No leads yet.</p>';
+      const userStatsRows = Object.keys(byUser).sort((a,b) => byUser[b]-byUser[a]);
+      const userStatsData = userStatsRows.map(u => ({ User: u, Leads: byUser[u] }));
+      const userStatsHtml = userStatsRows.length
+        ? tableHtml(['User', 'Leads'], userStatsRows.map(u => [u, byUser[u]]))
+        : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No leads yet.</p>';
 
       const leadsById = {};
       (leads || []).forEach(function(l){ leadsById[l.id] = l; });
-      const activityHtml = (logs || []).map(function(log){
+      const activityData = (logs || []).map(function(log){
         const lead = leadsById[log.lead_id];
         const when = log.created_at ? new Date(log.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
-        return '<div class="activity-item">' +
-          '<div class="who">' + (log.updated_by || 'Someone') + '</div>' +
-          '<div class="what">Moved ' + (lead ? lead.customer_name : 'a lead') + ' to <b>' + log.step + '</b>' + (log.description ? (' &mdash; ' + log.description) : '') + '</div>' +
-          '<div class="when">' + when + '</div>' +
-          '</div>';
-      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No activity yet.</p>';
+        return { User: log.updated_by || 'Someone', Customer: lead ? lead.customer_name : 'a lead', Step: log.step, Description: log.description || '', Date: when };
+      });
+      const activityHtml = activityData.length
+        ? tableHtml(['User', 'Customer', 'Step', 'Description', 'Date'], activityData.map(r => [r.User, r.Customer, r.Step, r.Description, r.Date]))
+        : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No activity yet.</p>';
 
       const lastPurchaseMapReport = {};
       (allTxns || []).forEach(function(t){
@@ -895,29 +907,49 @@
         const existing = lastPurchaseMapReport[t.item_id];
         if (!existing || new Date(t.created_at) > new Date(existing.created_at)) lastPurchaseMapReport[t.item_id] = t;
       });
-      const reorderHtml = lowStockItems.map(function(it){
+      const reorderData = lowStockItems.map(function(it){
         const stock = stockMap[it.id] || 0;
         const reorderLvl = Number(it.reorder_level) || 0;
         const suggestedQty = Math.max(reorderLvl * 2 - stock, reorderLvl - stock, 1);
         const lastP = lastPurchaseMapReport[it.id];
-        const vendorTxt = lastP ? (' &middot; Last from ' + (lastP.vendor || it.supplier || 'Unknown vendor')) : (it.supplier ? (' &middot; Usual vendor: ' + it.supplier) : '');
-        return '<div class="activity-item" style="border-left-color:var(--err);">' +
-          '<div class="who">' + it.item_name + '</div>' +
-          '<div class="what">Stock: ' + stock + ' (Reorder Level: ' + reorderLvl + ')' + vendorTxt + '</div>' +
-          '<div class="what" style="color:var(--err);font-weight:700;">Suggested Purchase: ' + suggestedQty + ' units</div>' +
-          '</div>';
-      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">All items are well stocked.</p>';
+        const vendor = (lastP && lastP.vendor) || it.supplier || '';
+        return { Item: it.item_name, Stock: stock, 'Reorder Level': reorderLvl, 'Suggested Buy': suggestedQty, Vendor: vendor };
+      });
+      const reorderHtml = reorderData.length
+        ? tableHtml(['Item', 'Stock', 'Reorder Level', 'Suggested Buy', 'Vendor'], reorderData.map(r => [r.Item, r.Stock, r['Reorder Level'], r['Suggested Buy'], r.Vendor || '-']))
+        : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">All items are well stocked.</p>';
 
       const itemsById = {};
       (items || []).forEach(function(it){ itemsById[it.id] = it; });
-      const stockMoveHtml = (txns || []).map(function(t){
+      const stockMoveData = (txns || []).map(function(t){
         const it = itemsById[t.item_id];
         const when = t.created_at ? new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
-        return '<div class="activity-item" style="border-left-color:' + (t.type === 'sale' ? 'var(--err)' : 'var(--ok)') + ';">' +
-          '<div class="who">' + (it ? it.item_name : 'Item') + ' &middot; ' + (t.type === 'sale' ? 'Sold' : 'Purchased') + ' ' + t.quantity + '</div>' +
-          '<div class="when">' + when + (t.note ? (' &middot; ' + t.note) : '') + '</div>' +
-          '</div>';
-      }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No stock movement yet.</p>';
+        const val = (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
+        return { Item: it ? it.item_name : 'Item', Type: t.type === 'sale' ? 'Sold' : 'Purchased', Qty: t.quantity, Value: val, Date: when, Note: t.note || '' };
+      });
+      const stockMoveHtml = stockMoveData.length
+        ? tableHtml(['Item', 'Type', 'Qty', 'Value', 'Date', 'Note'], stockMoveData.map(r => [r.Item, r.Type, r.Qty, 'Rs.' + r.Value.toLocaleString('en-IN'), r.Date, r.Note]))
+        : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No stock movement yet.</p>';
+
+      const pendingPOs = (pOrders || []).filter(o => o.status !== 'Completed');
+      const pendingSOs = (sOrders || []).filter(o => o.status !== 'Completed');
+      const totalPendingPOQty = pendingPOs.reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0), 0);
+      const totalPendingSOQty = pendingSOs.reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0), 0);
+
+      const pendingOrdersData = pendingPOs.map(function(o){
+        const it = itemsById[o.item_id];
+        const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0);
+        const d = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+        return { 'Order Type': 'Purchase', Item: it ? it.item_name : 'Item', Party: o.vendor || '-', Ordered: o.ordered_qty, Fulfilled: o.received_qty || 0, Pending: pending, Status: o.status, 'Order Date': d, 'Taken By': o.created_by || '-' };
+      }).concat(pendingSOs.map(function(o){
+        const it = itemsById[o.item_id];
+        const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0);
+        const d = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+        return { 'Order Type': 'Sales', Item: it ? it.item_name : 'Item', Party: o.customer_name || '-', Ordered: o.ordered_qty, Fulfilled: o.delivered_qty || 0, Pending: pending, Status: o.status, 'Order Date': d, 'Taken By': o.created_by || '-' };
+      }));
+      const pendingOrdersHtml = pendingOrdersData.length
+        ? tableHtml(['Type', 'Item', 'Party', 'Ordered', 'Fulfilled', 'Pending', 'Status', 'Order Date', 'Taken By'], pendingOrdersData.map(r => [r['Order Type'], r.Item, r.Party, r.Ordered, r.Fulfilled, r.Pending, r.Status, r['Order Date'], r['Taken By']]))
+        : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No pending orders. All caught up!</p>';
 
       adminReportsPanel.innerHTML =
         '<div class="stat-grid">' +
@@ -931,11 +963,42 @@
           '<div class="stat-box err"><div class="num">Rs.' + totalSalesValue.toLocaleString('en-IN') + '</div><div class="lbl">Total Sales Value</div></div>' +
           '<div class="stat-box" style="grid-column:span 2;"><div class="num">Rs.' + totalStockValue.toLocaleString('en-IN') + '</div><div class="lbl">Current Stock Value (what we have now)</div></div>' +
         '</div>' +
-        '<div class="card"><div class="section-title" style="margin-top:0;">Leads by User</div>' + userStatsHtml + '</div>' +
-        '<div class="card"><div class="section-title" style="margin-top:0;">Reorder Alerts</div>' + reorderHtml + '</div>' +
-        '<div class="card"><div class="section-title" style="margin-top:0;">Recent Stock Movement</div>' + stockMoveHtml + '</div>' +
-        '<div class="card"><div class="section-title" style="margin-top:0;">Recent Activity</div>' + activityHtml + '</div>';
+        '<div class="stat-grid">' +
+          '<div class="stat-box amber"><div class="num">' + pendingPOs.length + '</div><div class="lbl">Pending Purchase Orders</div></div>' +
+          '<div class="stat-box"><div class="num">' + totalPendingPOQty + '</div><div class="lbl">Pending Purchase Qty</div></div>' +
+          '<div class="stat-box amber"><div class="num">' + pendingSOs.length + '</div><div class="lbl">Pending Sales Orders</div></div>' +
+          '<div class="stat-box"><div class="num">' + totalPendingSOQty + '</div><div class="lbl">Pending Sales Qty</div></div>' +
+        '</div>' +
+        '<div class="card">' +
+          '<div class="table-export-row"><button type="button" class="table-export-btn" id="expPendingOrders">Export</button></div>' +
+          '<div class="section-title" style="margin-top:0;">Pending Orders (Purchase &amp; Sales)</div>' + pendingOrdersHtml + '</div>' +
+        '<div class="card">' +
+          '<div class="table-export-row"><button type="button" class="table-export-btn" id="expUserStats">Export</button></div>' +
+          '<div class="section-title" style="margin-top:0;">Leads by User</div>' + userStatsHtml + '</div>' +
+        '<div class="card">' +
+          '<div class="table-export-row"><button type="button" class="table-export-btn" id="expReorder">Export</button></div>' +
+          '<div class="section-title" style="margin-top:0;">Reorder Alerts</div>' + reorderHtml + '</div>' +
+        '<div class="card">' +
+          '<div class="table-export-row"><button type="button" class="table-export-btn" id="expStockMove">Export</button></div>' +
+          '<div class="section-title" style="margin-top:0;">Recent Stock Movement (Purchases &amp; Sales)</div>' + stockMoveHtml + '</div>' +
+        '<div class="card">' +
+          '<div class="table-export-row"><button type="button" class="table-export-btn" id="expActivity">Export</button></div>' +
+          '<div class="section-title" style="margin-top:0;">Recent Lead Activity</div>' + activityHtml + '</div>';
+
+      document.getElementById('expPendingOrders').addEventListener('click', function(){ exportToExcel(pendingOrdersData, 'pending_orders.xlsx', 'Pending Orders'); });
+      document.getElementById('expUserStats').addEventListener('click', function(){ exportToExcel(userStatsData, 'leads_by_user.xlsx', 'Leads by User'); });
+      document.getElementById('expReorder').addEventListener('click', function(){ exportToExcel(reorderData, 'reorder_alerts.xlsx', 'Reorder Alerts'); });
+      document.getElementById('expStockMove').addEventListener('click', function(){ exportToExcel(stockMoveData, 'stock_movement.xlsx', 'Stock Movement'); });
+      document.getElementById('expActivity').addEventListener('click', function(){ exportToExcel(activityData, 'lead_activity.xlsx', 'Lead Activity'); });
     };
+
+    function tableHtml(headers, rows){
+      return '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+        headers.map(h => '<th>' + h + '</th>').join('') +
+        '</tr></thead><tbody>' +
+        rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') +
+        '</tbody></table></div>';
+    }
 
 
     function loadXLSXLib(){
@@ -1277,7 +1340,27 @@
           '<div class="stat-grid">' +
             '<div class="stat-box amber"><div class="num">' + openCount + '</div><div class="lbl">Open / Partial Orders</div></div>' +
             '<div class="stat-box err"><div class="num">' + totalPending + '</div><div class="lbl">Total Pending Qty</div></div>' +
-          '</div>';
+          '</div>' +
+          '<div class="excel-row"><button type="button" class="excel-btn" id="exportOrdersBtn-' + kind + '">Export to Excel</button></div>';
+
+        setTimeout(function(){
+          const expBtn = document.getElementById('exportOrdersBtn-' + kind);
+          if (expBtn) expBtn.addEventListener('click', function(){
+            const exportData = (orders || []).map(function(o){
+              const it = itemsById2[o.item_id];
+              const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
+              const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
+              return {
+                Item: it ? it.item_name : 'Item',
+                Party: kind === 'purchase' ? (o.vendor||'') : (o.customer_name||''),
+                Ordered: o.ordered_qty, Fulfilled: fulfilled, Pending: pending,
+                Status: o.status, 'Order Date': o.created_at, 'Dispatch Date': o.dispatch_date || '',
+                'Taken By': o.created_by || '', Note: o.note || ''
+              };
+            });
+            exportToExcel(exportData, (kind === 'purchase' ? 'purchase_orders.xlsx' : 'sales_orders.xlsx'), 'Orders');
+          });
+        }, 0);
 
         if (!orders || !orders.length) {
           listSection.innerHTML = summaryHtml + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No orders yet.</p></div>';
