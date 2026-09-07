@@ -361,22 +361,79 @@
         .or('created_by.eq.' + currentUser.name + ',assigned_to.eq.' + currentUser.name)
         .order('created_at', { ascending: false });
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
-      if (!data || !data.length) { listEl.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers yet.</p></div>'; return; }
 
-      listEl.innerHTML = data.map(function(l){
+      const addBar = '<button type="button" class="add-btn" id="addCustomerBtn" style="margin-bottom:14px;">+ Add New Customer</button>';
+
+      if (!data || !data.length) { listEl.innerHTML = addBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers yet.</p></div>'; document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); }); return; }
+
+      listEl.innerHTML = addBar + data.map(function(l){
         const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
         const untouched = l.status === 'New Lead';
         const roleTag = l.created_by === currentUser.name && l.assigned_to === currentUser.name ? 'Created & Assigned to you'
           : l.created_by === currentUser.name ? 'Created by you'
           : 'Assigned to you';
-        return '<div class="lead-card ' + (untouched ? 'is-new' : '') + '">' +
+        return '<div class="lead-card ' + (untouched ? 'is-new' : '') + '" data-custid="' + l.id + '">' +
           '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
           '<span class="badge ' + (untouched ? 'new' : '') + '">' + l.status + '</span></div>' +
           '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
           '<div class="meta">' + dateStr + ' &middot; ' + roleTag + (untouched ? ' &middot; <b style="color:var(--amber-dark);">No action taken yet</b>' : '') + '</div>' +
+          '<div class="lead-actions"><div class="row2">' +
+            '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
+            '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
+          '</div></div>' +
+          '<div class="edit-slot"></div>' +
           '</div>';
       }).join('');
+
+      document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); });
+
+      listEl.querySelectorAll('.edit-customer').forEach(function(b){
+        b.addEventListener('click', function(){
+          const card = b.closest('.lead-card');
+          const id = card.getAttribute('data-custid');
+          const lead = data.find(x => String(x.id) === id);
+          showCustomerEditForm(lead, card.querySelector('.edit-slot'));
+        });
+      });
+      listEl.querySelectorAll('.del-customer').forEach(function(b){
+        b.addEventListener('click', async function(){
+          if (!confirm('Delete this customer/lead? This cannot be undone.')) return;
+          const card = b.closest('.lead-card');
+          const id = card.getAttribute('data-custid');
+          await sb.from('leads').delete().eq('id', id);
+          loadCustomers();
+        });
+      });
     };
+
+    function showCustomerEditForm(lead, slotEl){
+      slotEl.innerHTML =
+        '<div class="edit-form">' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Customer Name</span><input type="text" class="c-name" value="' + (lead.customer_name||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Phone</span><input type="text" class="c-phone" value="' + (lead.phone||'') + '"></div>' +
+        '</div>' +
+        '<div class="row2">' +
+          '<div class="field-block"><span class="mini-label">Product</span><input type="text" class="c-product" value="' + (lead.product||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Expected Value</span><input type="number" class="c-value" value="' + (lead.expected_value??'') + '"></div>' +
+        '</div>' +
+        '<div class="field-block" style="margin-bottom:8px;"><span class="mini-label">Notes</span><textarea class="c-notes">' + (lead.notes||'') + '</textarea></div>' +
+        '<div class="save-row"><button type="button" class="save c-save">Save</button><button type="button" class="cancel c-cancel">Cancel</button></div>' +
+        '</div>';
+      slotEl.querySelector('.c-cancel').addEventListener('click', function(){ slotEl.innerHTML = ''; });
+      slotEl.querySelector('.c-save').addEventListener('click', async function(){
+        const payload = {
+          customer_name: slotEl.querySelector('.c-name').value.trim(),
+          phone: slotEl.querySelector('.c-phone').value.trim(),
+          product: slotEl.querySelector('.c-product').value.trim(),
+          expected_value: slotEl.querySelector('.c-value').value || null,
+          notes: slotEl.querySelector('.c-notes').value.trim()
+        };
+        if (!payload.customer_name || !payload.phone) { alert('Name and Phone are required'); return; }
+        await sb.from('leads').update(payload).eq('id', lead.id);
+        loadCustomers();
+      });
+    }
 
     const form = document.getElementById('leadForm');
     const btn = document.getElementById('submitBtn');
