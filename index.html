@@ -238,7 +238,8 @@
     currentUser = user;
     loginScreen.classList.add('hidden');
     appScreen.classList.remove('hidden');
-    if (user.role === 'admin') {
+    const hasAnyAdminPerm = user.role === 'admin' || user.perm_leads || user.perm_users || user.perm_inventory;
+    if (hasAnyAdminPerm) {
       document.getElementById('tabAdminBtn').classList.remove('hidden');
     }
     initApp();
@@ -255,7 +256,7 @@
 
     const { data, error } = await sb
       .from('users')
-      .select('name, mobile, email, department, role')
+      .select('name, mobile, email, department, role, perm_leads, perm_users, perm_inventory')
       .eq('login_id', id)
       .eq('password', pass)
       .maybeSingle();
@@ -313,7 +314,7 @@
         pageTitle.textContent = 'My Dashboard'; loadDashboard();
       } else if (which === 'admin') {
         tabAdminBtn.classList.add('active'); adminSection.classList.remove('hidden');
-        pageTitle.textContent = 'Admin Panel'; loadAdminLeads();
+        pageTitle.textContent = 'Admin Panel'; setupAdminSubtabs();
       }
     }
     tabFormBtn.addEventListener('click', function(){ activateTab('form'); });
@@ -444,6 +445,18 @@
     subLeadsBtn.addEventListener('click', function(){ activateSub('leads'); });
     subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
     subInventoryBtn.addEventListener('click', function(){ activateSub('inventory'); });
+
+    function setupAdminSubtabs(){
+      const canLeads = currentUser.role === 'admin' || currentUser.perm_leads;
+      const canUsers = currentUser.role === 'admin' || currentUser.perm_users;
+      const canInventory = currentUser.role === 'admin' || currentUser.perm_inventory;
+      subLeadsBtn.classList.toggle('hidden', !canLeads);
+      subUsersBtn.classList.toggle('hidden', !canUsers);
+      subInventoryBtn.classList.toggle('hidden', !canInventory);
+      if (canLeads) activateSub('leads');
+      else if (canUsers) activateSub('users');
+      else if (canInventory) activateSub('inventory');
+    }
 
     function loadXLSXLib(){
       return new Promise(function(resolve, reject){
@@ -578,9 +591,17 @@
         });
       });
       listEl.innerHTML = data.map(function(u){
+        const rights = [];
+        if (u.role === 'admin') rights.push('Admin (all)');
+        else {
+          if (u.perm_leads) rights.push('Leads');
+          if (u.perm_users) rights.push('Users');
+          if (u.perm_inventory) rights.push('Inventory');
+        }
         return '<div class="admin-item" data-id="' + u.id + '">' +
-          '<div class="row"><div><div class="title">' + u.name + (u.role==='admin' ? ' (Admin)' : '') + '</div>' +
-          '<div class="sub">' + (u.mobile||'') + ' &middot; ' + (u.department||'') + ' &middot; Login: ' + u.login_id + '</div></div>' +
+          '<div class="row"><div><div class="title">' + u.name + '</div>' +
+          '<div class="sub">' + (u.mobile||'') + ' &middot; ' + (u.department||'') + ' &middot; Login: ' + u.login_id + '</div>' +
+          '<div class="sub">Rights: ' + (rights.length ? rights.join(', ') : 'None') + '</div></div>' +
           '<div class="btns"><button type="button" class="icon-btn edit-user">Edit</button>' +
           '<button type="button" class="icon-btn danger del-user">Delete</button></div></div>' +
           '<div class="edit-slot"></div></div>';
@@ -618,11 +639,17 @@
         '</div>' +
         '<div class="row2">' +
           '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (user?.department||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Role</span><select class="f-role"><option value="staff"' + (user?.role!=='admin'?' selected':'') + '>Staff</option><option value="admin"' + (user?.role==='admin'?' selected':'') + '>Admin</option></select></div>' +
+          '<div class="field-block"></div>' +
         '</div>' +
         '<div class="row2">' +
           '<div class="field-block"><span class="mini-label">Login ID</span><input type="text" class="f-login" placeholder="Login ID" value="' + (user?.login_id||'') + '"></div>' +
           '<div class="field-block"><span class="mini-label">Password</span><input type="text" class="f-pass" placeholder="Password" value="' + (user?.password||'') + '"></div>' +
+        '</div>' +
+        '<div class="field-block" style="margin-bottom:8px;">' +
+          '<span class="mini-label">Rights (what this user can access)</span>' +
+          '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13.5px;"><input type="checkbox" class="f-perm-leads"' + (user?.perm_leads ? ' checked' : '') + '> All Leads (view &amp; reassign)</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13.5px;"><input type="checkbox" class="f-perm-users"' + (user?.perm_users ? ' checked' : '') + '> Manage Users</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;"><input type="checkbox" class="f-perm-inventory"' + (user?.perm_inventory ? ' checked' : '') + '> Manage Inventory</label>' +
         '</div>' +
         '<div class="save-row"><button type="button" class="save f-save">Save</button><button type="button" class="cancel f-cancel">Cancel</button></div>' +
         '</div>';
@@ -632,9 +659,11 @@
           name: target.querySelector('.f-name').value.trim(),
           mobile: target.querySelector('.f-mobile').value.trim(),
           department: target.querySelector('.f-dept').value.trim(),
-          role: target.querySelector('.f-role').value,
           login_id: target.querySelector('.f-login').value.trim(),
-          password: target.querySelector('.f-pass').value.trim()
+          password: target.querySelector('.f-pass').value.trim(),
+          perm_leads: target.querySelector('.f-perm-leads').checked,
+          perm_users: target.querySelector('.f-perm-users').checked,
+          perm_inventory: target.querySelector('.f-perm-inventory').checked
         };
         if (!payload.name || !payload.login_id || !payload.password) { alert('Name, Login ID and Password are required'); return; }
         if (user) {
@@ -764,10 +793,10 @@
         '<div class="edit-form">' +
         '<div class="row2">' +
           '<div class="field-block"><span class="mini-label">SKU Code</span><input type="text" class="f-sku" placeholder="SKU Code" value="' + (item?.sku_code||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Item Group</span><input type="text" class="f-group" placeholder="Item Group" value="' + (item?.item_group||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Item Name</span><input type="text" class="f-iname" placeholder="Item Name" value="' + (item?.item_name||'') + '"></div>' +
         '</div>' +
         '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Item Name</span><input type="text" class="f-iname" placeholder="Item Name" value="' + (item?.item_name||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Item Group</span><input type="text" class="f-group" placeholder="Item Group" value="' + (item?.item_group||'') + '"></div>' +
           '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (item?.department||'') + '"></div>' +
         '</div>' +
         '<div class="row2">' +
