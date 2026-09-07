@@ -1,1201 +1,131 @@
- <!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<meta name="theme-color" content="#1B5E20">
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
-<title>Lead Form</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<style>
-  :root{
-    --navy:#1B5E20; --navy-dark:#0F3D12; --amber:#43A047; --amber-dark:#2E7D32;
-    --bg:#F4FAF4; --card:#FFFFFF; --text:#1A2530; --muted:#7C8B99; --line:#E1EDE1;
-    --ok:#2E7D32; --err:#C62828; --wa:#25D366;
-  }
-  *{box-sizing:border-box;}
-  body{margin:0;font-family:Arial,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
-  header{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dark) 100%);color:#fff;padding:26px 20px 46px;position:relative;}
-  header .tag{font-size:12.5px;letter-spacing:.03em;color:#BFD4E6;margin-bottom:6px;font-weight:600;}
-  header h1{margin:0 0 16px;font-size:23px;font-weight:800;}
-  .tabs{display:flex;gap:8px;}
-  .tab-btn{flex:1;padding:10px;border-radius:9px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:13.5px;font-weight:700;cursor:pointer;}
-  .tab-btn.active{background:#fff;color:var(--navy-dark);}
-  .logout-btn{position:absolute;top:22px;right:20px;background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:700;cursor:pointer;}
-  main{max-width:520px;margin:-26px auto 0;padding:0 16px 110px;position:relative;}
-  .card{background:var(--card);border-radius:16px;padding:20px 18px;box-shadow:0 8px 24px rgba(20,40,60,.10);margin-bottom:16px;}
-  .section-title{font-size:11.5px;font-weight:800;color:var(--muted);letter-spacing:.04em;margin:18px 0 10px;}
-  .section-title:first-child{margin-top:0;}
-  .field{margin-bottom:15px;}
-  .field label{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--navy-dark);margin-bottom:6px;}
-  .field .req{color:var(--amber-dark);font-weight:700;}
-  input,select,textarea{width:100%;padding:12.5px 13px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:#FBFCFD;color:var(--text);font-family:inherit;}
-  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--navy);background:#fff;}
-  textarea{min-height:64px;resize:vertical;}
-  .row2{display:flex;gap:10px;}
-  .row2 .field{flex:1;}
-  .footer-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -4px 14px rgba(20,40,60,.06);}
-  .footer-bar-inner{max-width:520px;margin:0 auto;}
-  button#submitBtn{width:100%;padding:15px;font-size:16.5px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--amber) 0%,var(--amber-dark) 100%);border:none;border-radius:11px;cursor:pointer;box-shadow:0 4px 12px rgba(226,121,14,.35);}
-  button#submitBtn:disabled{background:#C9CDD2;box-shadow:none;}
-  #status{margin-top:12px;font-size:14px;text-align:center;min-height:18px;}
-  #status.ok{color:var(--ok);font-weight:700;}
-  #status.err{color:var(--err);font-weight:700;}
-  #waBtn{display:none;align-items:center;justify-content:center;gap:8px;padding:13px;border-radius:11px;background:var(--wa);color:#fff;text-decoration:none;font-weight:700;font-size:15px;margin-top:14px;}
-  .hidden{display:none !important;}
-  .lead-card{border:1.5px solid var(--line);border-radius:12px;padding:13px 14px;margin-bottom:10px;}
-  .lead-card.is-new{border-color:var(--amber);background:#FFF8EF;}
-  .lead-card .row{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;}
-  .lead-card .cname{font-weight:800;font-size:15px;}
-  .lead-card .badge{font-size:11px;font-weight:800;padding:3px 8px;border-radius:20px;background:var(--navy);color:#fff;}
-  .lead-card .badge.new{background:var(--amber);}
-  .lead-card .meta{font-size:13px;color:var(--muted);margin-bottom:2px;}
-  .lead-actions{margin-top:10px;}
-  .lead-actions .row2{margin-bottom:8px;}
-  .lead-actions select, .lead-actions textarea{font-size:13.5px;}
-  .lead-actions textarea{min-height:50px;margin-bottom:8px;}
-  .lead-update-btn{width:100%;padding:10px;border:none;border-radius:8px;background:var(--navy);color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;}
-  .lead-msg{font-size:12px;margin-top:6px;font-weight:700;}
-  .lead-msg.ok{color:var(--ok);}
-  .lead-msg.err{color:var(--err);}
-  .summary-bar{display:flex;gap:10px;margin-bottom:14px;}
-  .summary-box{flex:1;background:var(--navy);color:#fff;border-radius:12px;padding:14px;text-align:center;}
-  .summary-box .num{font-size:22px;font-weight:800;}
-  .summary-box .lbl{font-size:11.5px;color:#BFD4E6;}
-  .summary-box.amber{background:linear-gradient(135deg,var(--amber),var(--amber-dark));}
-  .summary-box.amber .lbl{color:#FFE6C7;}
-
-  #loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dark) 100%);}
-  .login-card{background:#fff;border-radius:18px;padding:32px 24px;max-width:380px;width:100%;box-shadow:0 12px 30px rgba(0,0,0,.25);}
-  .login-card h2{margin:0 0 4px;font-size:21px;font-weight:800;color:var(--navy-dark);}
-  .login-card p{margin:0 0 22px;font-size:13.5px;color:var(--muted);}
-  .login-btn{width:100%;padding:14px;font-size:16px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--amber) 0%,var(--amber-dark) 100%);border:none;border-radius:10px;cursor:pointer;margin-top:6px;}
-  .login-btn:disabled{background:#C9CDD2;}
-  #loginMsg{margin-top:12px;font-size:13.5px;text-align:center;color:var(--err);font-weight:700;min-height:16px;}
-
-  .subtabs{display:flex;gap:8px;margin-bottom:16px;}
-  .subtab-btn{flex:1;padding:9px;border-radius:9px;border:1.5px solid var(--line);background:#fff;color:var(--navy-dark);font-size:13px;font-weight:700;cursor:pointer;}
-  .subtab-btn.active{background:var(--navy);color:#fff;border-color:var(--navy);}
-  .admin-item{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px;}
-  .admin-item .row{display:flex;justify-content:space-between;align-items:center;gap:8px;}
-  .admin-item .title{font-weight:800;font-size:14.5px;}
-  .admin-item .sub{font-size:12.5px;color:var(--muted);margin-top:2px;}
-  .admin-item .btns{display:flex;gap:6px;}
-  .icon-btn{padding:6px 10px;border-radius:7px;border:1px solid var(--line);background:#fff;font-size:12px;font-weight:700;cursor:pointer;color:var(--navy-dark);}
-  .icon-btn.danger{color:var(--err);border-color:#F3C7C7;}
-  .add-btn{width:100%;padding:11px;border:none;border-radius:9px;background:var(--navy);color:#fff;font-weight:800;font-size:13.5px;cursor:pointer;margin-top:4px;}
-  .edit-form{margin-top:10px;padding-top:10px;border-top:1px dashed var(--line);}
-  .edit-form .row2{margin-bottom:8px;}
-  .save-row{display:flex;gap:8px;margin-top:4px;}
-  .save-row button{flex:1;padding:9px;border-radius:8px;border:none;font-weight:700;font-size:13px;cursor:pointer;}
-  .save-row .save{background:var(--ok);color:#fff;}
-  .save-row .cancel{background:#eee;color:var(--text);}
-  .reorder-flag{color:var(--err);font-weight:800;font-size:11.5px;}
-  .activity-item{border-left:3px solid var(--navy); padding:8px 12px; margin-bottom:8px; background:#FBFCFD; border-radius:0 8px 8px 0;}
-  .activity-item .who{font-weight:800; font-size:13px;}
-  .activity-item .what{font-size:12.5px; color:var(--text); margin-top:2px;}
-  .activity-item .when{font-size:11px; color:var(--muted); margin-top:2px;}
-  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;}
-  .stat-box{background:var(--navy); color:#fff; border-radius:12px; padding:14px; text-align:center;}
-  .stat-box .num{font-size:24px; font-weight:800;}
-  .stat-box .lbl{font-size:11px; color:#BFD4E6; margin-top:2px;}
-  .stat-box.amber{background:linear-gradient(135deg,var(--amber),var(--amber-dark));}
-  .stat-box.amber .lbl{color:#FFE6C7;}
-  .stat-box.err{background:linear-gradient(135deg,#C62828,#8E1F1F);}
-  .stat-box.err .lbl{color:#FFD5D5;}
-  .stat-box.ok{background:linear-gradient(135deg,#2E7D32,#1B5E20);}
-  .stat-box.ok .lbl{color:#C8E6C9;}
-  .user-stat-row{display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--line); font-size:13.5px;}
-  .user-stat-row:last-child{border-bottom:none;}
-  .user-stat-row .cnt{font-weight:800; color:var(--navy-dark);}
-  .mini-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em;margin-bottom:4px;display:block;}
-  .field-block{margin-bottom:0;}
-  .excel-row{display:flex;gap:8px;margin-bottom:14px;}
-  .excel-btn{flex:1;padding:10px;border-radius:9px;border:1.5px solid var(--navy);background:#fff;color:var(--navy);font-weight:800;font-size:12.5px;cursor:pointer;text-align:center;}
-  .excel-btn.import{position:relative;overflow:hidden;}
-  .excel-btn.import input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;}
-  .import-msg{font-size:12px;font-weight:700;margin-bottom:10px;text-align:center;min-height:16px;}
-  .import-msg.ok{color:var(--ok);}
-  .import-msg.err{color:var(--err);}
-</style>
-</head>
-<body>
-
-<div id="loginScreen">
-  <div class="login-card">
-    <h2>Lead Form Login</h2>
-    <p>Enter your Login ID and Password to continue.</p>
-    <div class="field">
-      <label>Login ID</label>
-      <input type="text" id="loginId" autocomplete="username">
-    </div>
-    <div class="field">
-      <label>Password</label>
-      <input type="password" id="loginPass" autocomplete="current-password">
-    </div>
-    <button type="button" class="login-btn" id="loginBtn">Login</button>
-    <div id="loginMsg"></div>
-  </div>
-</div>
-
-<div id="appScreen" class="hidden">
-<header>
-  <button type="button" class="logout-btn" id="logoutBtn">Logout</button>
-  <div class="tag">RPGH &middot; LEAD CAPTURE</div>
-  <h1 id="pageTitle">Lead Form</h1>
-  <div class="tabs" id="mainTabs">
-    <button type="button" class="tab-btn active" id="tabFormBtn">New Lead</button>
-    <button type="button" class="tab-btn" id="tabDashBtn">My Dashboard</button>
-    <button type="button" class="tab-btn" id="tabCustomersBtn">Customers</button>
-    <button type="button" class="tab-btn hidden" id="tabAdminBtn">Admin</button>
-  </div>
-</header>
-<main>
-
-  <section id="formSection">
-    <div class="card">
-      <form id="leadForm">
-        <div class="section-title">Customer Details</div>
-        <div class="field">
-          <label>Customer Name <span class="req">*</span></label>
-          <input type="text" id="name" required>
-        </div>
-        <div class="field">
-          <label>Phone Number <span class="req">*</span></label>
-          <input type="tel" id="phone" inputmode="numeric" required>
-        </div>
-        <div class="field">
-          <label>Lead Source</label>
-          <select id="source">
-            <option value="Walk-in">Walk-in</option>
-            <option value="Phone">Phone</option>
-            <option value="WhatsApp" selected>WhatsApp</option>
-            <option value="Website">Website</option>
-            <option value="Referral">Referral</option>
-            <option value="Social Media">Social Media</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-
-        <div class="section-title">Product Details</div>
-        <div class="field">
-          <label>Product / Item</label>
-          <select id="product">
-            <option value="">Loading...</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Product Description</label>
-          <textarea id="productDesc" placeholder="Additional details about the item..."></textarea>
-        </div>
-        <div class="row2">
-          <div class="field">
-            <label>Expected Value (Rs.)</label>
-            <input type="number" id="value" inputmode="numeric" placeholder="0">
-          </div>
-          <div class="field">
-            <label>Assign To</label>
-            <select id="assignedTo">
-              <option value="">Loading...</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="section-title">Additional Notes</div>
-        <div class="field">
-          <textarea id="notes" placeholder="Any additional information..."></textarea>
-        </div>
-      </form>
-      <div id="status"></div>
-      <a href="#" id="waBtn" target="_blank">Send WhatsApp to Customer</a>
-    </div>
-  </section>
-
-  <section id="dashSection" class="hidden">
-    <div id="myRightsBar"></div>
-    <div id="dashSummary"></div>
-    <div id="dashList"></div>
-  </section>
-
-  <section id="customersSection" class="hidden">
-    <div id="customersList"></div>
-  </section>
-
-  <section id="adminSection" class="hidden">
-    <div class="subtabs">
-      <button type="button" class="subtab-btn active" id="subReportsBtn">Reports</button>
-      <button type="button" class="subtab-btn" id="subLeadsBtn">All Leads</button>
-      <button type="button" class="subtab-btn" id="subUsersBtn">Users</button>
-      <button type="button" class="subtab-btn" id="subInventoryBtn">Inventory</button>
-    </div>
-
-    <div id="adminReportsPanel"></div>
-    <div id="adminLeadsPanel" class="hidden"></div>
-    <div id="adminUsersPanel" class="hidden"></div>
-    <div id="adminInventoryPanel" class="hidden"></div>
-  </section>
-
-</main>
-<div class="footer-bar" id="footerBar">
-  <div class="footer-bar-inner">
-    <button id="submitBtn" type="submit" form="leadForm">Save Lead</button>
-  </div>
-</div>
-</div>
-
-<script>
-  const SUPABASE_URL = "https://wnorbyaeikvusdzesbkt.supabase.co";
-  const SUPABASE_KEY = "sb_publishable_l9_ENeEmiv59DJta1I8BGA_b7W7PXWV";
-  console.log("Checking URL:", SUPABASE_URL); 
-  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  const loginScreen = document.getElementById('loginScreen');
-  const appScreen = document.getElementById('appScreen');
-  const loginId = document.getElementById('loginId');
-  const loginPass = document.getElementById('loginPass');
-  const loginBtn = document.getElementById('loginBtn');
-  const loginMsg = document.getElementById('loginMsg');
-  const logoutBtn = document.getElementById('logoutBtn');
-  let currentUser = null;
-
-  function showApp(user){
-    currentUser = user;
-    loginScreen.classList.add('hidden');
-    appScreen.classList.remove('hidden');
-    const hasAnyAdminPerm = user.role === 'admin' || user.perm_leads || user.perm_users || user.perm_inventory;
-    if (hasAnyAdminPerm) {
-      document.getElementById('tabAdminBtn').classList.remove('hidden');
-    }
-    initApp();
-    loadDashboard();
-  }
-
-  async function doLogin(){
-    const id = loginId.value.trim();
-    const pass = loginPass.value.trim();
-    if (!id || !pass) { loginMsg.textContent = 'Please enter both Login ID and Password.'; return; }
-    loginBtn.disabled = true;
-    loginBtn.textContent = 'Checking...';
-    loginMsg.textContent = '';
-
-    const { data, error } = await sb
-      .from('users')
-      .select('name, mobile, email, department, role, perm_leads, perm_users, perm_inventory')
-      .eq('login_id', id)
-      .eq('password', pass)
-      .maybeSingle();
-
-    loginBtn.disabled = false;
-    loginBtn.textContent = 'Login';
-
-    if (error) { loginMsg.textContent = 'Error: ' + error.message; return; }
-    if (!data) { loginMsg.textContent = 'Invalid Login ID or Password'; return; }
-    localStorage.setItem('leadapp_user', JSON.stringify(data));
-    showApp(data);
-  }
-
-  loginBtn.addEventListener('click', doLogin);
-  loginPass.addEventListener('keydown', function(e){ if (e.key === 'Enter') doLogin(); });
-
-  logoutBtn.addEventListener('click', function(){
-    localStorage.removeItem('leadapp_user');
-    currentUser = null;
-    appScreen.classList.add('hidden');
-    loginScreen.classList.remove('hidden');
-    loginId.value = ''; loginPass.value = '';
-  });
-
-  const saved = localStorage.getItem('leadapp_user');
-  if (saved) { try { showApp(JSON.parse(saved)); } catch (e) {} }
-
-  let appInitialized = false;
-  let usersListGlobal = [];
-  let itemsListGlobal = [];
-  let stepsListGlobal = ['New Lead','Contacted','Site Visit','Quotation','Converted'];
-
-  function initApp(){
-    if (appInitialized) return;
-    appInitialized = true;
-
-    const tabFormBtn = document.getElementById('tabFormBtn');
-    const tabDashBtn = document.getElementById('tabDashBtn');
-    const tabCustomersBtn = document.getElementById('tabCustomersBtn');
-    const tabAdminBtn = document.getElementById('tabAdminBtn');
-    const formSection = document.getElementById('formSection');
-    const dashSection = document.getElementById('dashSection');
-    const customersSection = document.getElementById('customersSection');
-    const adminSection = document.getElementById('adminSection');
-    const footerBar = document.getElementById('footerBar');
-    const pageTitle = document.getElementById('pageTitle');
-
-    function activateTab(which){
-      [tabFormBtn, tabDashBtn, tabCustomersBtn, tabAdminBtn].forEach(b => b.classList.remove('active'));
-      [formSection, dashSection, customersSection, adminSection].forEach(s => s.classList.add('hidden'));
-      footerBar.classList.add('hidden');
-      if (which === 'form') {
-        tabFormBtn.classList.add('active'); formSection.classList.remove('hidden');
-        footerBar.classList.remove('hidden'); pageTitle.textContent = 'Lead Form';
-      } else if (which === 'dash') {
-        tabDashBtn.classList.add('active'); dashSection.classList.remove('hidden');
-        pageTitle.textContent = 'My Dashboard'; loadDashboard();
-      } else if (which === 'customers') {
-        tabCustomersBtn.classList.add('active'); customersSection.classList.remove('hidden');
-        pageTitle.textContent = 'Customers'; loadCustomers();
-      } else if (which === 'admin') {
-        tabAdminBtn.classList.add('active'); adminSection.classList.remove('hidden');
-        pageTitle.textContent = 'Admin Panel'; setupAdminSubtabs();
-      }
-    }
-    tabFormBtn.addEventListener('click', function(){ activateTab('form'); });
-    tabDashBtn.addEventListener('click', function(){ activateTab('dash'); });
-    tabCustomersBtn.addEventListener('click', function(){ activateTab('customers'); });
-    tabAdminBtn.addEventListener('click', function(){ activateTab('admin'); });
-
-    window.loadCustomers = async function(){
+window.loadCustomers = async function(){
       const listEl = document.getElementById('customersList');
-      listEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
-      const { data, error } = await sb
-        .from('leads')
-        .select('*')
-        .or('created_by.eq.' + currentUser.name + ',assigned_to.eq.' + currentUser.name)
-        .order('created_at', { ascending: false });
-      if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
-
-      const addBar = '<button type="button" class="add-btn" id="addCustomerBtn" style="margin-bottom:14px;">+ Add New Customer</button>';
-
-      if (!data || !data.length) { listEl.innerHTML = addBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers yet.</p></div>'; document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); }); return; }
-
-      listEl.innerHTML = addBar + data.map(function(l){
-        const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-        const untouched = l.status === 'New Lead';
-        const roleTag = l.created_by === currentUser.name && l.assigned_to === currentUser.name ? 'Created & Assigned to you'
-          : l.created_by === currentUser.name ? 'Created by you'
-          : 'Assigned to you';
-        return '<div class="lead-card ' + (untouched ? 'is-new' : '') + '" data-custid="' + l.id + '">' +
-          '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
-          '<span class="badge ' + (untouched ? 'new' : '') + '">' + l.status + '</span></div>' +
-          '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
-          '<div class="meta">' + dateStr + ' &middot; ' + roleTag + (untouched ? ' &middot; <b style="color:var(--amber-dark);">No action taken yet</b>' : '') + '</div>' +
-          '<div class="lead-actions">' +
-            '<div class="row2">' +
-              '<a href="tel:' + l.phone + '" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;">Call</a>' +
-              '<a href="https://wa.me/' + toWaNumber(l.phone) + '" target="_blank" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;color:var(--wa);border-color:#B7E5C6;">WhatsApp</a>' +
-            '</div>' +
-            '<div class="row2">' +
-              '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
-              '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="edit-slot"></div>' +
-          '</div>';
-      }).join('');
-
-      document.getElementById('addCustomerBtn').addEventListener('click', function(){ activateTab('form'); });
-
-      listEl.querySelectorAll('.edit-customer').forEach(function(b){
-        b.addEventListener('click', function(){
-          const card = b.closest('.lead-card');
-          const id = card.getAttribute('data-custid');
-          const lead = data.find(x => String(x.id) === id);
-          showCustomerEditForm(lead, card.querySelector('.edit-slot'));
-        });
-      });
-      listEl.querySelectorAll('.del-customer').forEach(function(b){
-        b.addEventListener('click', async function(){
-          if (!confirm('Delete this customer/lead? This cannot be undone.')) return;
-          const card = b.closest('.lead-card');
-          const id = card.getAttribute('data-custid');
-          await sb.from('leads').delete().eq('id', id);
-          loadCustomers();
-        });
-      });
-    };
-
-    function showCustomerEditForm(lead, slotEl){
-      slotEl.innerHTML =
-        '<div class="edit-form">' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Customer Name</span><input type="text" class="c-name" value="' + (lead.customer_name||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Phone</span><input type="text" class="c-phone" value="' + (lead.phone||'') + '"></div>' +
-        '</div>' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Product</span><input type="text" class="c-product" value="' + (lead.product||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Expected Value</span><input type="number" class="c-value" value="' + (lead.expected_value??'') + '"></div>' +
-        '</div>' +
-        '<div class="field-block" style="margin-bottom:8px;"><span class="mini-label">Notes</span><textarea class="c-notes">' + (lead.notes||'') + '</textarea></div>' +
-        '<div class="save-row"><button type="button" class="save c-save">Save</button><button type="button" class="cancel c-cancel">Cancel</button></div>' +
-        '</div>';
-      slotEl.querySelector('.c-cancel').addEventListener('click', function(){ slotEl.innerHTML = ''; });
-      slotEl.querySelector('.c-save').addEventListener('click', async function(){
-        const payload = {
-          customer_name: slotEl.querySelector('.c-name').value.trim(),
-          phone: slotEl.querySelector('.c-phone').value.trim(),
-          product: slotEl.querySelector('.c-product').value.trim(),
-          expected_value: slotEl.querySelector('.c-value').value || null,
-          notes: slotEl.querySelector('.c-notes').value.trim()
-        };
-        if (!payload.customer_name || !payload.phone) { alert('Name and Phone are required'); return; }
-        await sb.from('leads').update(payload).eq('id', lead.id);
-        loadCustomers();
-      });
-    }
-
-    const form = document.getElementById('leadForm');
-    const btn = document.getElementById('submitBtn');
-    const statusEl = document.getElementById('status');
-    const assignSelect = document.getElementById('assignedTo');
-    const productSelect = document.getElementById('product');
-    const waBtn = document.getElementById('waBtn');
-
-    function fillAssignDropdown(users){
-      usersListGlobal = users;
-      assignSelect.innerHTML = '<option value="">-- Select --</option>' +
-        users.map(u => '<option value="' + u.name + '">' + u.name + '</option>').join('');
-    }
-    function fillProductDropdown(items){
-      itemsListGlobal = items;
-      productSelect.innerHTML = '<option value="">-- Select --</option>' +
-        items.map(it => '<option value="' + it.name + '">' + it.name + ' (Stock: ' + it.stock + ')</option>').join('');
-    }
-    productSelect.addEventListener('change', function(){
-      const item = itemsListGlobal.find(it => it.name === productSelect.value);
-      if (!item || !item.department) return;
-      const match = usersListGlobal.find(u => u.department === item.department);
-      if (match) assignSelect.value = match.name;
-    });
-
-    async function loadUsers(){
-      const { data } = await sb.from('users').select('name, mobile, email, department, role');
-      if (data) fillAssignDropdown(data);
-    }
-    
-    async function loadItems(){
+      listEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading Customers...</p>';
+      
       try {
-        console.log("Loading items...");
-        const [itemsRes, txnsRes] = await Promise.all([
-          sb.from('inventory').select('id, item_name, department'),
-          sb.from('stock_transactions').select('item_id, type, quantity')
-        ]);
-        if (itemsRes.error) throw itemsRes.error;
-        if (txnsRes.error) throw txnsRes.error;
-        const items = itemsRes.data;
-        const txns = txnsRes.data;
-        if (items) {
-          const stockMap = {};
-          (txns || []).forEach(function(t){
-            const q = Number(t.quantity) || 0;
-            stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
-          });
-          fillProductDropdown(items.map(function(r){
-            return { name: r.item_name, stock: stockMap[r.id] || 0, department: r.department };
-          }));
-        }
-      } catch (err) {
-        console.error("loadItems error:", err.message || err);
-      }
-    }
-    
-    async function loadSteps(){
-      const { data } = await sb.from('steps').select('step_name').order('step_order', { ascending: true });
-      if (data && data.length) stepsListGlobal = data.map(r => r.step_name);
-    }
-    loadUsers(); loadItems(); loadSteps();
+        // Naye customers table se data fetch kar rahe hain
+        const { data, error } = await sb
+          .from('customers')
+          .select('*')
+          .order('created_at', { ascending: false });
+          
+        if (error) throw error;
 
-    function toWaNumber(num){
-      num = (num || '').toString().replace(/\D/g,'');
-      if (num.length === 10) return '91' + num;
-      return num;
-    }
-    let waStage = 0, custLink = '', userLink = '';
-    waBtn.addEventListener('click', function(){
-      setTimeout(function(){
-        if (waStage === 0 && userLink) {
-          waStage = 1; waBtn.textContent = 'Send WhatsApp to User'; waBtn.href = userLink;
-        } else { waBtn.style.display = 'none'; }
-      }, 400);
-    });
+        const addBar = '<button type="button" class="add-btn" id="addNewCustomerBtn" style="margin-bottom:14px;">+ Add New Customer</button>';
 
-    form.addEventListener('submit', async function(e){
-      e.preventDefault();
-      statusEl.textContent = ''; statusEl.className = ''; waBtn.style.display = 'none';
-
-      const payload = {
-        customer_name: document.getElementById('name').value.trim(),
-        phone: document.getElementById('phone').value.trim(),
-        source: document.getElementById('source').value,
-        product: productSelect.value,
-        product_desc: document.getElementById('productDesc').value.trim(),
-        status: 'New Lead',
-        assigned_to: assignSelect.value,
-        created_by: currentUser.name,
-        expected_value: document.getElementById('value').value || null,
-        notes: document.getElementById('notes').value.trim()
-      };
-      if (!payload.customer_name || !payload.phone) {
-        statusEl.textContent = 'Name and Phone Number are required.'; statusEl.className = 'err'; return;
-      }
-      btn.disabled = true; btn.textContent = 'Saving...';
-
-      const { data: inserted, error: insErr } = await sb.from('leads').insert(payload).select().single();
-      if (insErr) {
-        statusEl.textContent = 'Error: ' + insErr.message; statusEl.className = 'err';
-        btn.disabled = false; btn.textContent = 'Save Lead'; return;
-      }
-      await sb.from('lead_log').insert({ lead_id: inserted.id, step: 'New Lead', updated_by: payload.assigned_to, description: payload.notes });
-
-      statusEl.textContent = 'Lead saved successfully!'; statusEl.className = 'ok';
-      btn.disabled = false; btn.textContent = 'Save Lead';
-
-      const custMsg = 'Hello ' + payload.customer_name + ', thank you for contacting us' + (payload.product ? (' regarding ' + payload.product) : '') + '. We will get in touch with you shortly.';
-      custLink = 'https://wa.me/' + toWaNumber(payload.phone) + '?text=' + encodeURIComponent(custMsg);
-      const assignedUser = usersListGlobal.find(u => u.name === payload.assigned_to);
-      userLink = '';
-      if (assignedUser && assignedUser.mobile) {
-        const userMsg = 'A new lead has been assigned to you:\nName: ' + payload.customer_name + '\nPhone: ' + payload.phone + '\nProduct: ' + payload.product + (payload.product_desc ? ('\nDescription: ' + payload.product_desc) : '') + '\nValue: Rs.' + payload.expected_value + '\nSource: ' + payload.source + (payload.notes ? ('\nNotes: ' + payload.notes) : '');
-        userLink = 'https://wa.me/' + toWaNumber(assignedUser.mobile) + '?text=' + encodeURIComponent(userMsg);
-      }
-      waStage = 0; waBtn.textContent = 'Send WhatsApp to Customer'; waBtn.href = custLink; waBtn.style.display = 'flex';
-
-      form.reset(); document.getElementById('source').value = 'WhatsApp';
-      statusEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-
-    // ============ ADMIN PANEL ============
-    const subReportsBtn = document.getElementById('subReportsBtn');
-    const subLeadsBtn = document.getElementById('subLeadsBtn');
-    const subUsersBtn = document.getElementById('subUsersBtn');
-    const subInventoryBtn = document.getElementById('subInventoryBtn');
-    const adminReportsPanel = document.getElementById('adminReportsPanel');
-    const adminLeadsPanel = document.getElementById('adminLeadsPanel');
-    const adminUsersPanel = document.getElementById('adminUsersPanel');
-    const adminInventoryPanel = document.getElementById('adminInventoryPanel');
-
-    function activateSub(which){
-      [subReportsBtn, subLeadsBtn, subUsersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
-      [adminReportsPanel, adminLeadsPanel, adminUsersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
-      if (which === 'reports') { subReportsBtn.classList.add('active'); adminReportsPanel.classList.remove('hidden'); loadAdminReports(); }
-      if (which === 'leads') { subLeadsBtn.classList.add('active'); adminLeadsPanel.classList.remove('hidden'); loadAdminLeads(); }
-      if (which === 'users') { subUsersBtn.classList.add('active'); adminUsersPanel.classList.remove('hidden'); loadAdminUsers(); }
-      if (which === 'inventory') { subInventoryBtn.classList.add('active'); adminInventoryPanel.classList.remove('hidden'); loadAdminInventory(); }
-    }
-    subReportsBtn.addEventListener('click', function(){ activateSub('reports'); });
-    subLeadsBtn.addEventListener('click', function(){ activateSub('leads'); });
-    subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
-    subInventoryBtn.addEventListener('click', function(){ activateSub('inventory'); });
-
-    function setupAdminSubtabs(){
-      const isAdmin = currentUser.role === 'admin';
-      const canLeads = isAdmin || currentUser.perm_leads;
-      const canUsers = isAdmin || currentUser.perm_users;
-      const canInventory = isAdmin || currentUser.perm_inventory;
-      subReportsBtn.classList.toggle('hidden', !isAdmin);
-      subLeadsBtn.classList.toggle('hidden', !canLeads);
-      subUsersBtn.classList.toggle('hidden', !canUsers);
-      subInventoryBtn.classList.toggle('hidden', !canInventory);
-      if (isAdmin) activateSub('reports');
-      else if (canLeads) activateSub('leads');
-      else if (canUsers) activateSub('users');
-      else if (canInventory) activateSub('inventory');
-    }
-
-    window.loadAdminReports = async function(){
-      adminReportsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
-
-      try {
-        console.log("Loading Admin Reports...");
-        const [leadsRes, logsRes, itemsRes, allTxnsRes] = await Promise.all([
-          sb.from('leads').select('*'),
-          sb.from('lead_log').select('*').order('created_at', { ascending: false }).limit(20),
-          sb.from('inventory').select('*'),
-          sb.from('stock_transactions').select('*').order('created_at', { ascending: false })
-        ]);
-        if (leadsRes.error) throw leadsRes.error;
-        if (logsRes.error) throw logsRes.error;
-        if (itemsRes.error) throw itemsRes.error;
-        if (allTxnsRes.error) throw allTxnsRes.error;
-
-        const leads = leadsRes.data;
-        const logs = logsRes.data;
-        const items = itemsRes.data;
-        const allTxns = allTxnsRes.data;
-
-        const txns = (allTxns || []).slice(0, 20);
-        const totalLeads = (leads || []).length;
-        const newLeads = (leads || []).filter(l => l.status === 'New Lead').length;
-        const converted = (leads || []).filter(l => l.status === 'Converted').length;
-
-        const stockMap = {};
-        (allTxns || []).forEach(function(t){
-          const q = Number(t.quantity) || 0;
-          stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
-        });
-        const lowStockItems = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0));
-
-        const byUser = {};
-        (leads || []).forEach(function(l){
-          const u = l.assigned_to || 'Unassigned';
-          byUser[u] = (byUser[u] || 0) + 1;
-        });
-        const userStatsHtml = Object.keys(byUser).sort((a,b) => byUser[b]-byUser[a]).map(function(u){
-          return '<div class="user-stat-row"><span>' + u + '</span><span class="cnt">' + byUser[u] + ' leads</span></div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No leads yet.</p>';
-
-        const leadsById = {};
-        (leads || []).forEach(function(l){ leadsById[l.id] = l; });
-        const activityHtml = (logs || []).map(function(log){
-          const lead = leadsById[log.lead_id];
-          const when = log.created_at ? new Date(log.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
-          return '<div class="activity-item">' +
-            '<div class="who">' + (log.updated_by || 'Someone') + '</div>' +
-            '<div class="what">Moved ' + (lead ? lead.customer_name : 'a lead') + ' to <b>' + log.step + '</b>' + (log.description ? (' &mdash; ' + log.description) : '') + '</div>' +
-            '<div class="when">' + when + '</div>' +
-            '</div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No activity yet.</p>';
-
-        const reorderHtml = lowStockItems.map(function(it){
-          return '<div class="activity-item" style="border-left-color:var(--err);">' +
-            '<div class="who">' + it.item_name + '</div>' +
-            '<div class="what">Stock: ' + (stockMap[it.id]||0) + ' (Reorder Level: ' + (it.reorder_level||0) + ')</div>' +
-            '</div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">All items are well stocked.</p>';
-
-        const itemsById = {};
-        (items || []).forEach(function(it){ itemsById[it.id] = it; });
-        const stockMoveHtml = (txns || []).map(function(t){
-          const it = itemsById[t.item_id];
-          const when = t.created_at ? new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
-          return '<div class="activity-item" style="border-left-color:' + (t.type === 'sale' ? 'var(--err)' : 'var(--ok)') + ';">' +
-            '<div class="who">' + (it ? it.item_name : 'Item') + ' &middot; ' + (t.type === 'sale' ? 'Sold' : 'Purchased') + ' ' + t.quantity + '</div>' +
-            '<div class="when">' + when + (t.note ? (' &middot; ' + t.note) : '') + '</div>' +
-            '</div>';
-        }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No stock movement yet.</p>';
-
-        adminReportsPanel.innerHTML =
-          '<div class="stat-grid">' +
-            '<div class="stat-box amber"><div class="num">' + newLeads + '</div><div class="lbl">New Leads</div></div>' +
-            '<div class="stat-box"><div class="num">' + totalLeads + '</div><div class="lbl">Total Leads</div></div>' +
-            '<div class="stat-box ok"><div class="num">' + converted + '</div><div class="lbl">Converted</div></div>' +
-            '<div class="stat-box err"><div class="num">' + lowStockItems.length + '</div><div class="lbl">Low Stock Items</div></div>' +
-          '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Leads by User</div>' + userStatsHtml + '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Reorder Alerts</div>' + reorderHtml + '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Recent Stock Movement</div>' + stockMoveHtml + '</div>' +
-          '<div class="card"><div class="section-title" style="margin-top:0;">Recent Activity</div>' + activityHtml + '</div>';
-      } catch (err) {
-        console.error("Admin Reports error:", err);
-        adminReportsPanel.innerHTML = '<p style="color:red;text-align:center;">Error: ' + err.message + '</p>';
-      }
-    };
-
-
-    function loadXLSXLib(){
-      return new Promise(function(resolve, reject){
-        if (window.XLSX) return resolve();
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload = function(){ resolve(); };
-        s.onerror = function(){ reject(new Error('Failed to load Excel library')); };
-        document.head.appendChild(s);
-      });
-    }
-
-    async function exportToExcel(data, filename, sheetName){
-      if (!data || !data.length) { alert('No data to export.'); return; }
-      await loadXLSXLib();
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
-      XLSX.writeFile(wb, filename);
-    }
-
-    function readExcelFile(file, callback){
-      loadXLSXLib().then(function(){
-        const reader = new FileReader();
-        reader.onload = function(e){
-          const wb = XLSX.read(e.target.result, { type: 'binary' });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws);
-          callback(rows);
-        };
-        reader.readAsBinaryString(file);
-      }).catch(function(err){
-        alert(err.message);
-      });
-    }
-
-    window.loadAdminLeads = async function(){
-      adminLeadsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
-      const { data, error } = await sb.from('leads').select('*').order('created_at', { ascending: false });
-      if (error) { adminLeadsPanel.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
-
-      const exportBar = '<div class="excel-row">' +
-        '<button type="button" class="excel-btn" id="exportLeadsBtn">Export to Excel</button>' +
-        '</div>';
-
-      if (!data.length) { adminLeadsPanel.innerHTML = exportBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No leads yet.</p></div>'; return; }
-
-      const leadCardsHtml = data.map(function(l){
-        const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-        return '<div class="lead-card ' + (l.status === 'New Lead' ? 'is-new' : '') + '" data-leadid="' + l.id + '">' +
-          '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
-          '<span class="badge ' + (l.status === 'New Lead' ? 'new' : '') + '">' + l.status + '</span></div>' +
-          '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
-          '<div class="meta">' + dateStr + (l.expected_value ? ' &middot; Rs.' + l.expected_value : '') + ' &middot; Assigned: ' + (l.assigned_to || '-') + '</div>' +
-          '<div class="lead-actions">' +
-            '<div class="row2">' +
-              '<select class="admin-status">' + stepsListGlobal.map(s => '<option value="'+s+'"'+(s===l.status?' selected':'')+'>'+s+'</option>').join('') + '</select>' +
-              '<select class="admin-assign">' + usersListGlobal.map(u => '<option value="'+u.name+'"'+(u.name===l.assigned_to?' selected':'')+'>'+u.name+'</option>').join('') + '</select>' +
-            '</div>' +
-            '<button type="button" class="lead-update-btn admin-lead-save">Update</button>' +
-          '</div>' +
-          '<div class="lead-msg"></div>' +
-          '</div>';
-      }).join('');
-
-      adminLeadsPanel.innerHTML = exportBar + leadCardsHtml;
-
-      document.getElementById('exportLeadsBtn').addEventListener('click', function(){
-        exportToExcel(data.map(l => ({
-          Customer: l.customer_name, Phone: l.phone, Source: l.source, Product: l.product,
-          Description: l.product_desc, Status: l.status, AssignedTo: l.assigned_to,
-          Value: l.expected_value, Notes: l.notes, Date: l.created_at
-        })), 'leads_export.xlsx', 'Leads');
-      });
-
-      adminLeadsPanel.querySelectorAll('.admin-lead-save').forEach(function(saveBtn){
-        saveBtn.addEventListener('click', async function(){
-          const cardEl = saveBtn.closest('.lead-card');
-          const leadId = cardEl.getAttribute('data-leadid');
-          const newStatus = cardEl.querySelector('.admin-status').value;
-          const newAssign = cardEl.querySelector('.admin-assign').value;
-          const msgEl = cardEl.querySelector('.lead-msg');
-          const { error } = await sb.from('leads').update({ status: newStatus, assigned_to: newAssign }).eq('id', leadId);
-          if (error) { msgEl.textContent = error.message; msgEl.className = 'lead-msg err'; return; }
-          await sb.from('lead_log').insert({ lead_id: leadId, step: newStatus, updated_by: currentUser.name, description: 'Updated by admin' });
-          msgEl.textContent = 'Updated!'; msgEl.className = 'lead-msg ok';
-        });
-      });
-    };
-
-    window.loadAdminUsers = async function(){
-      adminUsersPanel.innerHTML =
-        '<div class="excel-row">' +
-          '<button type="button" class="excel-btn" id="exportUsersBtn">Export to Excel</button>' +
-          '<label class="excel-btn import">Import from Excel<input type="file" id="importUsersFile" accept=".xlsx,.xls,.csv"></label>' +
-        '</div>' +
-        '<div class="import-msg" id="usersImportMsg"></div>' +
-        '<button type="button" class="add-btn" id="addUserBtn">+ Add New User</button><div id="usersList"></div>';
-      document.getElementById('addUserBtn').addEventListener('click', function(){ showUserForm(null); });
-
-      const { data, error } = await sb.from('users').select('*').order('name');
-      const listEl = document.getElementById('usersList');
-      if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
-
-      document.getElementById('exportUsersBtn').addEventListener('click', function(){
-        exportToExcel((data||[]).map(u => ({
-          name: u.name, mobile: u.mobile, email: u.email, department: u.department,
-          login_id: u.login_id, password: u.password, role: u.role
-        })), 'users_export.xlsx', 'Users');
-      });
-
-      document.getElementById('importUsersFile').addEventListener('change', function(e){
-        const file = e.target.files[0];
-        if (!file) return;
-        const msgEl = document.getElementById('usersImportMsg');
-        msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
-        readExcelFile(file, async function(rows){
-          const cleanRows = rows.map(r => ({
-            name: r.name || r.Name || '',
-            mobile: r.mobile || r.Mobile || '',
-            email: r.email || r.Email || '',
-            department: r.department || r.Department || '',
-            login_id: String(r.login_id || r['Login ID'] || r.LoginID || ''),
-            password: String(r.password || r.Password || ''),
-            role: r.role || r.Role || 'staff'
-          })).filter(r => r.name && r.login_id);
-          if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: name, mobile, email, department, login_id, password, role'; msgEl.className = 'import-msg err'; return; }
-          const { error: impErr } = await sb.from('users').insert(cleanRows);
-          if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
-          msgEl.textContent = cleanRows.length + ' users imported!'; msgEl.className = 'import-msg ok';
-          loadAdminUsers();
-        });
-      });
-      listEl.innerHTML = data.map(function(u){
-        const rights = [];
-        if (u.role === 'admin') rights.push('Admin (all)');
-        else {
-          if (u.perm_leads) rights.push('Leads');
-          if (u.perm_users) rights.push('Users');
-          if (u.perm_inventory) rights.push('Inventory');
-        }
-        return '<div class="admin-item" data-id="' + u.id + '">' +
-          '<div class="row"><div><div class="title">' + u.name + '</div>' +
-          '<div class="sub">' + (u.mobile||'') + ' &middot; ' + (u.department||'') + ' &middot; Login: ' + u.login_id + '</div>' +
-          '<div class="sub">Rights: ' + (rights.length ? rights.join(', ') : 'None') + '</div></div>' +
-          '<div class="btns"><button type="button" class="icon-btn edit-user">Edit</button>' +
-          '<button type="button" class="icon-btn danger del-user">Delete</button></div></div>' +
-          '<div class="edit-slot"></div></div>';
-      }).join('');
-
-      listEl.querySelectorAll('.edit-user').forEach(function(b){
-        b.addEventListener('click', function(){
-          const item = b.closest('.admin-item');
-          const id = item.getAttribute('data-id');
-          const u = data.find(x => String(x.id) === id);
-          showUserForm(u, item.querySelector('.edit-slot'));
-        });
-      });
-      listEl.querySelectorAll('.del-user').forEach(function(b){
-        b.addEventListener('click', async function(){
-          if (!confirm('Delete this user?')) return;
-          const id = b.closest('.admin-item').getAttribute('data-id');
-          await sb.from('users').delete().eq('id', id);
-          loadAdminUsers();
-        });
-      });
-    };
-
-    function showUserForm(user, slotEl){
-      const target = slotEl || (function(){
-        const div = document.createElement('div');
-        document.getElementById('usersList').prepend(div);
-        return div;
-      })();
-      target.innerHTML =
-        '<div class="edit-form">' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Name</span><input type="text" class="f-name" placeholder="Name" value="' + (user?.name||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Mobile</span><input type="text" class="f-mobile" placeholder="Mobile" value="' + (user?.mobile||'') + '"></div>' +
-        '</div>' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (user?.department||'') + '"></div>' +
-          '<div class="field-block"></div>' +
-        '</div>' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Login ID</span><input type="text" class="f-login" placeholder="Login ID" value="' + (user?.login_id||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Password</span><input type="text" class="f-pass" placeholder="Password" value="' + (user?.password||'') + '"></div>' +
-        '</div>' +
-        '<div class="field-block" style="margin-bottom:8px;">' +
-          '<span class="mini-label">Rights (what this user can access)</span>' +
-          '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13.5px;"><input type="checkbox" class="f-perm-leads"' + (user?.perm_leads ? ' checked' : '') + '> All Leads (view &amp; reassign)</label>' +
-          '<label style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13.5px;"><input type="checkbox" class="f-perm-users"' + (user?.perm_users ? ' checked' : '') + '> Manage Users</label>' +
-          '<label style="display:flex;align-items:center;gap:8px;font-size:13.5px;"><input type="checkbox" class="f-perm-inventory"' + (user?.perm_inventory ? ' checked' : '') + '> Manage Inventory</label>' +
-        '</div>' +
-        '<div class="save-row"><button type="button" class="save f-save">Save</button><button type="button" class="cancel f-cancel">Cancel</button></div>' +
-        '</div>';
-      target.querySelector('.f-cancel').addEventListener('click', function(){ target.innerHTML=''; if(!slotEl) target.remove(); });
-      target.querySelector('.f-save').addEventListener('click', async function(){
-        const payload = {
-          name: target.querySelector('.f-name').value.trim(),
-          mobile: target.querySelector('.f-mobile').value.trim(),
-          department: target.querySelector('.f-dept').value.trim(),
-          login_id: target.querySelector('.f-login').value.trim(),
-          password: target.querySelector('.f-pass').value.trim(),
-          perm_leads: target.querySelector('.f-perm-leads').checked,
-          perm_users: target.querySelector('.f-perm-users').checked,
-          perm_inventory: target.querySelector('.f-perm-inventory').checked
-        };
-        if (!payload.name || !payload.login_id || !payload.password) { alert('Name, Login ID and Password are required'); return; }
-        if (user) {
-          await sb.from('users').update(payload).eq('id', user.id);
+        if (!data || !data.length) { 
+          listEl.innerHTML = addBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No customers yet.</p></div>'; 
         } else {
-          await sb.from('users').insert(payload);
-        }
-        loadAdminUsers();
-      });
-    }
-
-    window.loadAdminInventory = async function(){
-      adminInventoryPanel.innerHTML =
-        '<div class="excel-row">' +
-          '<button type="button" class="excel-btn" id="exportItemsBtn">Export to Excel</button>' +
-          '<label class="excel-btn import">Import from Excel<input type="file" id="importItemsFile" accept=".xlsx,.xls,.csv"></label>' +
-        '</div>' +
-        '<div class="import-msg" id="itemsImportMsg"></div>' +
-        '<div class="card" style="padding:14px;">' +
-          '<div class="field-block" style="margin-bottom:10px;"><span class="mini-label">Search Item Name</span><input type="text" id="filterItemName" placeholder="Type to search..."></div>' +
-          '<div class="row2">' +
-            '<div class="field-block"><span class="mini-label">Item Group</span><select id="filterItemGroup"><option value="">All Groups</option></select></div>' +
-            '<div class="field-block"><span class="mini-label">Vendor</span><select id="filterVendor"><option value="">All Vendors</option></select></div>' +
-          '</div>' +
-        '</div>' +
-        '<button type="button" class="add-btn" id="addItemBtn">+ Add New Item</button><div id="itemsList"></div>';
-      document.getElementById('addItemBtn').addEventListener('click', function(){ showItemForm(null); });
-
-      const listEl = document.getElementById('itemsList');
-      listEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
-
-      try {
-        console.log("Loading Admin Inventory...");
-        const [invRes, txnsRes] = await Promise.all([
-          sb.from('inventory').select('*').order('item_name'),
-          sb.from('stock_transactions').select('item_id, type, quantity')
-        ]);
-        
-        if (invRes.error) throw invRes.error;
-        if (txnsRes.error) throw txnsRes.error;
-
-        const data = invRes.data;
-        const txns = txnsRes.data;
-
-        document.getElementById('exportItemsBtn').addEventListener('click', function(){
-          exportToExcel((data||[]).map(it => ({
-            sku_code: it.sku_code, item_group: it.item_group, item_name: it.item_name,
-            reorder_level: it.reorder_level, unit_price: it.unit_price, department: it.department, supplier: it.supplier
-          })), 'inventory_export.xlsx', 'Inventory');
-        });
-
-        document.getElementById('importItemsFile').addEventListener('change', function(e){
-          const file = e.target.files[0];
-          if (!file) return;
-          const msgEl = document.getElementById('itemsImportMsg');
-          msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
-          readExcelFile(file, async function(rows){
-            const cleanRows = rows.map(r => ({
-              sku_code: r.sku_code || r['SKU Code'] || '',
-              item_group: r.item_group || r['Item Group'] || '',
-              item_name: r.item_name || r['Item Name'] || '',
-              reorder_level: Number(r.reorder_level || r['Reorder Level']) || 0,
-              unit_price: r.unit_price || r['Unit Price'] ? Number(r.unit_price || r['Unit Price']) : null,
-              department: r.department || r.Department || '',
-              supplier: r.supplier || r.Supplier || ''
-            })).filter(r => r.item_name);
-            if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check column headers: sku_code, item_group, item_name, department, reorder_level, unit_price, supplier'; msgEl.className = 'import-msg err'; return; }
-            const { error: impErr } = await sb.from('inventory').insert(cleanRows);
-            if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
-            msgEl.textContent = cleanRows.length + ' items imported!'; msgEl.className = 'import-msg ok';
-            loadAdminInventory();
-          });
-        });
-
-        const stockMap = {};
-        (txns || []).forEach(function(t){
-          const q = Number(t.quantity) || 0;
-          stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
-        });
-
-        const groupSelect = document.getElementById('filterItemGroup');
-        const vendorSelect = document.getElementById('filterVendor');
-        const groups = [...new Set((data||[]).map(it => it.item_group).filter(Boolean))].sort();
-        const vendors = [...new Set((data||[]).map(it => it.supplier).filter(Boolean))].sort();
-        groups.forEach(g => { const o = document.createElement('option'); o.value = g; o.textContent = g; groupSelect.appendChild(o); });
-        vendors.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; vendorSelect.appendChild(o); });
-
-        function renderItemsList(){
-          const nameQ = document.getElementById('filterItemName').value.trim().toLowerCase();
-          const groupQ = groupSelect.value;
-          const vendorQ = vendorSelect.value;
-
-          const filtered = data.filter(function(it){
-            if (nameQ && !(it.item_name || '').toLowerCase().includes(nameQ)) return false;
-            if (groupQ && it.item_group !== groupQ) return false;
-            if (vendorQ && it.supplier !== vendorQ) return false;
-            return true;
-          });
-
-          if (!filtered.length) {
-            listEl.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No items match this filter.</p></div>';
-            return;
-          }
-
-          listEl.innerHTML = filtered.map(function(it){
-            const stock = stockMap[it.id] || 0;
-            const low = stock <= (Number(it.reorder_level)||0);
-            return '<div class="admin-item" data-id="' + it.id + '">' +
-              '<div class="row"><div><div class="title">' + (it.sku_code ? it.sku_code + ' &middot; ' : '') + it.item_name + '</div>' +
-              '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + (it.supplier ? (' &middot; ' + it.supplier) : '') + '</div></div>' +
-              '<div class="btns"><button type="button" class="icon-btn stock-item">+ Stock</button><button type="button" class="icon-btn edit-item">Edit</button>' +
-              '<button type="button" class="icon-btn danger del-item">Delete</button></div></div>' +
-              '<div class="edit-slot"></div></div>';
+          listEl.innerHTML = addBar + data.map(function(c){
+            const dateStr = c.created_at ? new Date(c.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+            return '<div class="lead-card" data-custid="' + c.id + '">' +
+              '<div class="row"><span class="cname">' + c.customer_name + '</span></div>' +
+              '<div class="meta">Phone: ' + (c.phone || 'N/A') + (c.email ? ' &middot; Email: ' + c.email : '') + '</div>' +
+              '<div class="meta">Added on: ' + dateStr + (c.address ? ' &middot; ' + c.address : '') + '</div>' +
+              '<div class="lead-actions">' +
+                '<div class="row2">' +
+                  '<a href="tel:' + c.phone + '" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;">Call</a>' +
+                  '<a href="https://wa.me/' + toWaNumber(c.phone) + '" target="_blank" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;color:var(--wa);border-color:#B7E5C6;">WhatsApp</a>' +
+                '</div>' +
+                '<div class="row2">' +
+                  '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
+                  '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
+                '</div>' +
+              '</div>' +
+              '<div class="edit-slot"></div>' +
+              '</div>';
           }).join('');
-
-          listEl.querySelectorAll('.stock-item').forEach(function(b){
-            b.addEventListener('click', function(){
-              const item = b.closest('.admin-item');
-              const id = item.getAttribute('data-id');
-              showStockForm(id, item.querySelector('.edit-slot'));
-            });
-          });
-          listEl.querySelectorAll('.edit-item').forEach(function(b){
-            b.addEventListener('click', function(){
-              const item = b.closest('.admin-item');
-              const id = item.getAttribute('data-id');
-              const it = data.find(x => String(x.id) === id);
-              showItemForm(it, item.querySelector('.edit-slot'));
-            });
-          });
-          listEl.querySelectorAll('.del-item').forEach(function(b){
-            b.addEventListener('click', async function(){
-              if (!confirm('Delete this item?')) return;
-              const id = b.closest('.admin-item').getAttribute('data-id');
-              await sb.from('inventory').delete().eq('id', id);
-              loadAdminInventory();
-            });
-          });
         }
 
-        document.getElementById('filterItemName').addEventListener('input', renderItemsList);
-        groupSelect.addEventListener('change', renderItemsList);
-        vendorSelect.addEventListener('change', renderItemsList);
+        // Add Customer Button Event
+        document.getElementById('addNewCustomerBtn').addEventListener('click', function(){
+          showCustomerForm(null, null);
+        });
 
-        renderItemsList();
+        // Edit Button Events
+        listEl.querySelectorAll('.edit-customer').forEach(function(b){
+          b.addEventListener('click', function(){
+            const card = b.closest('.lead-card');
+            const id = card.getAttribute('data-custid');
+            const cust = data.find(x => String(x.id) === id);
+            showCustomerForm(cust, card.querySelector('.edit-slot'));
+          });
+        });
+
+        // Delete Button Events
+        listEl.querySelectorAll('.del-customer').forEach(function(b){
+          b.addEventListener('click', async function(){
+            if (!confirm('Delete this customer? This cannot be undone.')) return;
+            const card = b.closest('.lead-card');
+            const id = card.getAttribute('data-custid');
+            await sb.from('customers').delete().eq('id', id);
+            loadCustomers();
+          });
+        });
+
       } catch (err) {
-        console.error("Inventory data error:", err);
+        console.error("Customers error:", err);
         listEl.innerHTML = '<p style="color:red;text-align:center;">Error: ' + err.message + '</p>';
       }
     };
 
-
-    function showStockForm(itemId, slotEl){
-      slotEl.innerHTML =
-        '<div class="edit-form">' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Type</span><select class="st-type"><option value="purchase">Purchase (Stock In)</option><option value="sale">Sale (Stock Out)</option></select></div>' +
-          '<div class="field-block"><span class="mini-label">Quantity</span><input type="number" class="st-qty" placeholder="Quantity"></div>' +
-        '</div>' +
-        '<div class="field-block" style="margin-bottom:8px;"><span class="mini-label">Note</span><input type="text" class="st-note" placeholder="Optional note"></div>' +
-        '<div class="save-row"><button type="button" class="save st-save">Save Entry</button><button type="button" class="cancel st-cancel">Cancel</button></div>' +
-        '</div>';
-      slotEl.querySelector('.st-cancel').addEventListener('click', function(){ slotEl.innerHTML = ''; });
-      slotEl.querySelector('.st-save').addEventListener('click', async function(){
-        const type = slotEl.querySelector('.st-type').value;
-        const qty = Number(slotEl.querySelector('.st-qty').value);
-        const note = slotEl.querySelector('.st-note').value.trim();
-        if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
-        await sb.from('stock_transactions').insert({ item_id: itemId, type: type, quantity: qty, note: note });
-        loadAdminInventory();
-      });
-    }
-
-    function showItemForm(item, slotEl){
+    function showCustomerForm(customer, slotEl){
+      // Agar direct add button dabaya hai, toh upar ek naya form banayenge
       const target = slotEl || (function(){
         const div = document.createElement('div');
-        document.getElementById('itemsList').prepend(div);
+        div.style.marginBottom = "14px";
+        document.getElementById('customersList').insertBefore(div, document.getElementById('customersList').children[1]);
         return div;
       })();
+
       target.innerHTML =
-        '<div class="edit-form">' +
+        '<div class="card edit-form" style="border:1.5px solid var(--navy); margin-top:0;">' +
+        '<div class="section-title" style="margin-top:0;">' + (customer ? 'Edit Customer' : 'New Customer') + '</div>' +
         '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">SKU Code</span><input type="text" class="f-sku" placeholder="SKU Code" value="' + (item?.sku_code||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Item Name</span><input type="text" class="f-iname" placeholder="Item Name" value="' + (item?.item_name||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Customer Name</span><input type="text" class="c-name" value="' + (customer?.customer_name||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Phone</span><input type="text" class="c-phone" value="' + (customer?.phone||'') + '"></div>' +
         '</div>' +
         '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Item Group</span><input type="text" class="f-group" placeholder="Item Group" value="' + (item?.item_group||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (item?.department||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Email</span><input type="email" class="c-email" value="' + (customer?.email||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Address</span><input type="text" class="c-address" value="' + (customer?.address||'') + '"></div>' +
         '</div>' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Reorder Level</span><input type="number" class="f-reorder" placeholder="Reorder Level" value="' + (item?.reorder_level??0) + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Unit Price</span><input type="number" class="f-price" placeholder="Unit Price" value="' + (item?.unit_price??'') + '"></div>' +
-        '</div>' +
-        '<div class="row2">' +
-          '<div class="field-block"><span class="mini-label">Supplier</span><input type="text" class="f-supplier" placeholder="Supplier" value="' + (item?.supplier||'') + '"></div>' +
-          '<div class="field-block"></div>' +
-        '</div>' +
-        '<div class="save-row"><button type="button" class="save f-save">Save</button><button type="button" class="cancel f-cancel">Cancel</button></div>' +
+        '<div class="save-row"><button type="button" class="save c-save">Save</button><button type="button" class="cancel c-cancel">Cancel</button></div>' +
         '</div>';
-      target.querySelector('.f-cancel').addEventListener('click', function(){ target.innerHTML=''; if(!slotEl) target.remove(); });
-      target.querySelector('.f-save').addEventListener('click', async function(){
+
+      target.querySelector('.c-cancel').addEventListener('click', function(){ 
+        target.innerHTML = ''; 
+        if(!slotEl) target.remove(); 
+      });
+
+      target.querySelector('.c-save').addEventListener('click', async function(){
+        const btn = this;
+        btn.disabled = true; btn.textContent = "Saving...";
+
         const payload = {
-          sku_code: target.querySelector('.f-sku').value.trim(),
-          item_group: target.querySelector('.f-group').value.trim(),
-          item_name: target.querySelector('.f-iname').value.trim(),
-          department: target.querySelector('.f-dept').value.trim(),
-          reorder_level: Number(target.querySelector('.f-reorder').value)||0,
-          unit_price: target.querySelector('.f-price').value ? Number(target.querySelector('.f-price').value) : null,
-          supplier: target.querySelector('.f-supplier').value.trim()
+          customer_name: target.querySelector('.c-name').value.trim(),
+          phone: target.querySelector('.c-phone').value.trim(),
+          email: target.querySelector('.c-email').value.trim(),
+          address: target.querySelector('.c-address').value.trim()
         };
-        if (!payload.item_name) { alert('Item name is required'); return; }
-        if (item) {
-          await sb.from('inventory').update(payload).eq('id', item.id);
-        } else {
-          await sb.from('inventory').insert(payload);
+
+        if (!payload.customer_name || !payload.phone) { 
+          alert('Name and Phone are required'); 
+          btn.disabled = false; btn.textContent = "Save";
+          return; 
         }
-        loadAdminInventory();
+
+        try {
+          if (customer) {
+            const { error } = await sb.from('customers').update(payload).eq('id', customer.id);
+            if (error) throw error;
+          } else {
+            const { error } = await sb.from('customers').insert(payload);
+            if (error) throw error;
+          }
+          loadCustomers(); // List refresh karein
+        } catch (err) {
+          alert("Error saving customer: " + err.message);
+          btn.disabled = false; btn.textContent = "Save";
+        }
       });
     }
-  }
-
-  window.renderDashboard = function(leads){
-    const dashSummary = document.getElementById('dashSummary');
-    const dashList = document.getElementById('dashList');
-    const rightsBar = document.getElementById('myRightsBar');
-    if (rightsBar) {
-      const rights = [];
-      if (currentUser.role === 'admin') rights.push('Full Admin Access');
-      else {
-        if (currentUser.perm_leads) rights.push('All Leads');
-        if (currentUser.perm_users) rights.push('Manage Users');
-        if (currentUser.perm_inventory) rights.push('Manage Inventory');
-      }
-      rightsBar.innerHTML = '<div class="card" style="padding:12px 16px;margin-bottom:14px;">' +
-        '<span class="mini-label">Your Access Rights</span>' +
-        '<div style="font-size:13.5px;font-weight:700;color:var(--navy-dark);margin-top:4px;">' +
-        (rights.length ? rights.join(' &middot; ') : 'Standard User (Leads only)') + '</div></div>';
-    }
-    const newCount = leads.filter(l => l.status === 'New Lead').length;
-    dashSummary.innerHTML =
-      '<div class="summary-bar">' +
-        '<div class="summary-box amber"><div class="num">' + newCount + '</div><div class="lbl">New Leads</div></div>' +
-        '<div class="summary-box"><div class="num">' + leads.length + '</div><div class="lbl">Total Assigned</div></div>' +
-      '</div>';
-    if (leads.length === 0) {
-      dashList.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No leads assigned.</p></div>';
-      return;
-    }
-    dashList.innerHTML = leads.map(function(l){
-      const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-      return '<div class="lead-card ' + (l.status === 'New Lead' ? 'is-new' : '') + '" data-leadid="' + l.id + '">' +
-        '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
-        '<span class="badge ' + (l.status === 'New Lead' ? 'new' : '') + '">' + l.status + '</span></div>' +
-        '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
-        '<div class="meta">' + dateStr + (l.expected_value ? ' &middot; Rs.' + l.expected_value : '') + '</div>' +
-        '<div class="lead-actions">' +
-          '<div class="row2">' +
-            '<select class="action-status">' + stepsListGlobal.map(s => '<option value="'+s+'"'+(s===l.status?' selected':'')+'>'+s+'</option>').join('') + '</select>' +
-            '<select class="action-assign">' + usersListGlobal.map(u => '<option value="'+u.name+'"'+(u.name===l.assigned_to?' selected':'')+'>'+u.name+'</option>').join('') + '</select>' +
-          '</div>' +
-          '<textarea class="action-desc" placeholder="Write description (what was done, next steps)..."></textarea>' +
-          '<button type="button" class="lead-update-btn">Update &amp; Move Forward</button>' +
-        '</div>' +
-        '<div class="lead-msg"></div>' +
-        '</div>';
-    }).join('');
-
-    document.querySelectorAll('#dashList .lead-update-btn').forEach(function(updBtn){
-      updBtn.addEventListener('click', async function(){
-        const cardEl = updBtn.closest('.lead-card');
-        const leadId = cardEl.getAttribute('data-leadid');
-        const newStatus = cardEl.querySelector('.action-status').value;
-        const newAssign = cardEl.querySelector('.action-assign').value;
-        const desc = cardEl.querySelector('.action-desc').value.trim();
-        const msgEl = cardEl.querySelector('.lead-msg');
-        updBtn.disabled = true; updBtn.textContent = '...';
-        const { error } = await sb.from('leads').update({ status: newStatus, assigned_to: newAssign }).eq('id', leadId);
-        if (error) {
-          updBtn.disabled = false; updBtn.textContent = 'Update & Move Forward';
-          msgEl.textContent = error.message; msgEl.className = 'lead-msg err'; return;
-        }
-        await sb.from('lead_log').insert({ lead_id: leadId, step: newStatus, updated_by: currentUser.name, description: desc });
-        updBtn.disabled = false; updBtn.textContent = 'Update & Move Forward';
-        msgEl.textContent = 'Updated successfully!'; msgEl.className = 'lead-msg ok';
-        loadDashboard();
-      });
-    });
-  };
-
-  async function loadDashboard(){
-    if (!currentUser) return;
-    const dashList = document.getElementById('dashList');
-    if (dashList) dashList.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
-    const { data, error } = await sb.from('leads').select('*').eq('assigned_to', currentUser.name).order('created_at', { ascending: false });
-    if (!error && window.renderDashboard) window.renderDashboard(data || []);
-  }
-
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('service-worker.js').catch(function(){});
-  }
-</script>
-</body>
-</html>
