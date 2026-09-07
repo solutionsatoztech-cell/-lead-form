@@ -377,6 +377,50 @@
   let itemsListGlobal = [];
   let stepsListGlobal = ['New Lead','Contacted','Site Visit','Quotation','Converted'];
 
+  function tableHtml(headers, rows){
+    return '<div class="table-wrap"><table class="data-table"><thead><tr>' +
+      headers.map(h => '<th>' + h + '</th>').join('') +
+      '</tr></thead><tbody>' +
+      rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') +
+      '</tbody></table></div>';
+  }
+
+
+  function loadXLSXLib(){
+    return new Promise(function(resolve, reject){
+      if (window.XLSX) return resolve();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ reject(new Error('Failed to load Excel library')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function exportToExcel(data, filename, sheetName){
+    if (!data || !data.length) { alert('No data to export.'); return; }
+    await loadXLSXLib();
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.writeFile(wb, filename);
+  }
+
+  function readExcelFile(file, callback){
+    loadXLSXLib().then(function(){
+      const reader = new FileReader();
+      reader.onload = function(e){
+        const wb = XLSX.read(e.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws);
+        callback(rows);
+      };
+      reader.readAsBinaryString(file);
+    }).catch(function(err){
+      alert(err.message);
+    });
+  }
+
   function initApp(){
     if (appInitialized) return;
     appInitialized = true;
@@ -779,22 +823,21 @@
       const totalPendingPOQty = pendingPOs.reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0), 0);
       const totalPendingSOQty = pendingSOs.reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0), 0);
 
-      function miniList(rows, emptyMsg){
-        if (!rows.length) return '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">' + emptyMsg + '</p>';
-        return rows.map(r => '<div class="user-stat-row"><span>' + r[0] + '</span><span class="cnt">' + r[1] + '</span></div>').join('');
-      }
-
-      const reorderMini = lowStockItems.slice(0, 5).map(it => [it.item_name, 'Stock ' + (stockMap[it.id]||0) + ' / Reorder ' + (it.reorder_level||0)]);
-      const poMini = pendingPOs.slice(0, 5).map(function(o){
+      const reorderData = lowStockItems.map(it => ({ Item: it.item_name, Stock: stockMap[it.id]||0, 'Reorder Level': it.reorder_level||0, Vendor: it.supplier||'' }));
+      const poData = pendingPOs.map(function(o){
         const it = itemsByIdD[o.item_id];
         const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0);
-        return [(it ? it.item_name : 'Item') + ' (' + (o.vendor||'-') + ')', pending + ' pending'];
+        return { Item: it ? it.item_name : 'Item', Vendor: o.vendor||'', Ordered: o.ordered_qty, Received: o.received_qty||0, Pending: pending, Status: o.status };
       });
-      const soMini = pendingSOs.slice(0, 5).map(function(o){
+      const soData = pendingSOs.map(function(o){
         const it = itemsByIdD[o.item_id];
         const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0);
-        return [(it ? it.item_name : 'Item') + ' (' + (o.customer_name||'-') + ')', pending + ' pending'];
+        return { Item: it ? it.item_name : 'Item', Customer: o.customer_name||'', Ordered: o.ordered_qty, Delivered: o.delivered_qty||0, Pending: pending, Status: o.status };
       });
+
+      const reorderTableHtml = reorderData.length ? tableHtml(['Item', 'Stock', 'Reorder Level', 'Vendor'], reorderData.map(r => [r.Item, r.Stock, r['Reorder Level'], r.Vendor || '-'])) : '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">All items well stocked.</p>';
+      const poTableHtml = poData.length ? tableHtml(['Item', 'Vendor', 'Ordered', 'Received', 'Pending', 'Status'], poData.map(r => [r.Item, r.Vendor || '-', r.Ordered, r.Received, r.Pending, r.Status])) : '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">No pending purchase orders.</p>';
+      const soTableHtml = soData.length ? tableHtml(['Item', 'Customer', 'Ordered', 'Delivered', 'Pending', 'Status'], soData.map(r => [r.Item, r.Customer || '-', r.Ordered, r.Delivered, r.Pending, r.Status])) : '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">No pending sales orders.</p>';
 
       adminDashboardPanel.innerHTML =
         '<div class="dashboard-header"><h2>Business Dashboard</h2><p>One-page overview of Leads, Inventory, Reorder and Orders.</p></div>' +
@@ -810,13 +853,16 @@
           '<div class="stat-box amber"><div class="num">' + pendingSOs.length + '</div><div class="lbl">Pending Sales Orders</div></div>' +
           '<div class="stat-box"><div class="num">' + totalPendingSOQty + '</div><div class="lbl">Pending Sales Qty</div></div>' +
         '</div>' +
-        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Top Reorder Alerts</div><button type="button" class="icon-btn" id="dashGoReorder">View All</button></div>' + miniList(reorderMini, 'All items well stocked.') + '</div>' +
-        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Pending Purchase Orders</div><button type="button" class="icon-btn" id="dashGoInvPO">View All</button></div>' + miniList(poMini, 'No pending purchase orders.') + '</div>' +
-        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Pending Sales Orders</div><button type="button" class="icon-btn" id="dashGoInvSO">View All</button></div>' + miniList(soMini, 'No pending sales orders.') + '</div>';
+        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Reorder Alerts</div><div class="btns"><button type="button" class="icon-btn" id="dashExpReorder">Export</button><button type="button" class="icon-btn" id="dashGoReorder">View All</button></div></div>' + reorderTableHtml + '</div>' +
+        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Pending Purchase Orders</div><div class="btns"><button type="button" class="icon-btn" id="dashExpPO">Export</button><button type="button" class="icon-btn" id="dashGoInvPO">View All</button></div></div>' + poTableHtml + '</div>' +
+        '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Pending Sales Orders</div><div class="btns"><button type="button" class="icon-btn" id="dashExpSO">Export</button><button type="button" class="icon-btn" id="dashGoInvSO">View All</button></div></div>' + soTableHtml + '</div>';
 
       document.getElementById('dashGoReorder').addEventListener('click', function(){ activateSub('reorder'); });
       document.getElementById('dashGoInvPO').addEventListener('click', function(){ activateSub('inventory'); });
       document.getElementById('dashGoInvSO').addEventListener('click', function(){ activateSub('inventory'); });
+      document.getElementById('dashExpReorder').addEventListener('click', function(){ exportToExcel(reorderData, 'reorder_alerts.xlsx', 'Reorder'); });
+      document.getElementById('dashExpPO').addEventListener('click', function(){ exportToExcel(poData, 'pending_purchase_orders.xlsx', 'Pending PO'); });
+      document.getElementById('dashExpSO').addEventListener('click', function(){ exportToExcel(soData, 'pending_sales_orders.xlsx', 'Pending SO'); });
     };
 
     window.loadAdminReorder = async function(){
@@ -1070,49 +1116,6 @@
       document.getElementById('expActivity').addEventListener('click', function(){ exportToExcel(activityData, 'lead_activity.xlsx', 'Lead Activity'); });
     };
 
-    function tableHtml(headers, rows){
-      return '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-        headers.map(h => '<th>' + h + '</th>').join('') +
-        '</tr></thead><tbody>' +
-        rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') +
-        '</tbody></table></div>';
-    }
-
-
-    function loadXLSXLib(){
-      return new Promise(function(resolve, reject){
-        if (window.XLSX) return resolve();
-        const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
-        s.onload = function(){ resolve(); };
-        s.onerror = function(){ reject(new Error('Failed to load Excel library')); };
-        document.head.appendChild(s);
-      });
-    }
-
-    async function exportToExcel(data, filename, sheetName){
-      if (!data || !data.length) { alert('No data to export.'); return; }
-      await loadXLSXLib();
-      const ws = XLSX.utils.json_to_sheet(data);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, sheetName);
-      XLSX.writeFile(wb, filename);
-    }
-
-    function readExcelFile(file, callback){
-      loadXLSXLib().then(function(){
-        const reader = new FileReader();
-        reader.onload = function(e){
-          const wb = XLSX.read(e.target.result, { type: 'binary' });
-          const ws = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(ws);
-          callback(rows);
-        };
-        reader.readAsBinaryString(file);
-      }).catch(function(err){
-        alert(err.message);
-      });
-    }
 
     window.loadAdminLeads = async function(){
       adminLeadsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
@@ -2029,19 +2032,52 @@
       const q = Number(t.quantity) || 0;
       stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
     });
-    const lowStockCount = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0)).length;
-    const pendingPOs = (pOrders || []).filter(o => o.status !== 'Completed').length;
-    const pendingSOs = (sOrders || []).filter(o => o.status !== 'Completed').length;
+    const lowStockItems = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0));
+    const pendingPOs = (pOrders || []).filter(o => o.status !== 'Completed');
+    const pendingSOs = (sOrders || []).filter(o => o.status !== 'Completed');
+
+    const lowStockData = lowStockItems.map(it => ({ Item: it.item_name, Stock: stockMap[it.id]||0, 'Reorder Level': it.reorder_level||0, Vendor: it.supplier||'' }));
+    const poData = pendingPOs.map(function(o){
+      const it = (items||[]).find(i => i.id === o.item_id);
+      const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0);
+      return { Item: it ? it.item_name : 'Item', Vendor: o.vendor||'', Ordered: o.ordered_qty, Received: o.received_qty||0, Pending: pending, Status: o.status };
+    });
+    const soData = pendingSOs.map(function(o){
+      const it = (items||[]).find(i => i.id === o.item_id);
+      const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0);
+      return { Item: it ? it.item_name : 'Item', Customer: o.customer_name||'', Ordered: o.ordered_qty, Delivered: o.delivered_qty||0, Pending: pending, Status: o.status };
+    });
 
     el.innerHTML =
       '<div class="card" style="padding:14px;margin-bottom:14px;">' +
-        '<span class="mini-label">Business Snapshot</span>' +
+        '<span class="mini-label">Business Snapshot &mdash; tap a box for details</span>' +
         '<div class="stat-grid" style="margin-top:10px;margin-bottom:0;">' +
-          '<div class="stat-box err"><div class="num">' + lowStockCount + '</div><div class="lbl">Low Stock Items</div></div>' +
-          '<div class="stat-box amber"><div class="num">' + pendingPOs + '</div><div class="lbl">Pending Purchase Orders</div></div>' +
-          '<div class="stat-box amber" style="grid-column:span 2;"><div class="num">' + pendingSOs + '</div><div class="lbl">Pending Sales Orders</div></div>' +
+          '<div class="stat-box err" id="snapLowStock" style="cursor:pointer;"><div class="num">' + lowStockItems.length + '</div><div class="lbl">Low Stock Items</div></div>' +
+          '<div class="stat-box amber" id="snapPO" style="cursor:pointer;"><div class="num">' + pendingPOs.length + '</div><div class="lbl">Pending Purchase Orders</div></div>' +
+          '<div class="stat-box amber" id="snapSO" style="cursor:pointer;grid-column:span 2;"><div class="num">' + pendingSOs.length + '</div><div class="lbl">Pending Sales Orders</div></div>' +
         '</div>' +
+        '<div id="snapDetail" style="margin-top:12px;"></div>' +
       '</div>';
+
+    const snapDetail = document.getElementById('snapDetail');
+    function showSnapTable(title, headers, rows, data, filename){
+      if (!rows.length) { snapDetail.innerHTML = '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">Nothing to show for ' + title + '.</p>'; return; }
+      snapDetail.innerHTML =
+        '<div class="table-export-row"><button type="button" class="table-export-btn" id="snapExportBtn">Export ' + title + '</button></div>' +
+        tableHtml(headers, rows);
+      document.getElementById('snapExportBtn').addEventListener('click', function(){
+        exportToExcel(data, filename, title);
+      });
+    }
+    document.getElementById('snapLowStock').addEventListener('click', function(){
+      showSnapTable('Low Stock Items', ['Item', 'Stock', 'Reorder Level', 'Vendor'], lowStockData.map(r => [r.Item, r.Stock, r['Reorder Level'], r.Vendor || '-']), lowStockData, 'low_stock_items.xlsx');
+    });
+    document.getElementById('snapPO').addEventListener('click', function(){
+      showSnapTable('Pending Purchase Orders', ['Item', 'Vendor', 'Ordered', 'Received', 'Pending', 'Status'], poData.map(r => [r.Item, r.Vendor || '-', r.Ordered, r.Received, r.Pending, r.Status]), poData, 'pending_purchase_orders.xlsx');
+    });
+    document.getElementById('snapSO').addEventListener('click', function(){
+      showSnapTable('Pending Sales Orders', ['Item', 'Customer', 'Ordered', 'Delivered', 'Pending', 'Status'], soData.map(r => [r.Item, r.Customer || '-', r.Ordered, r.Delivered, r.Pending, r.Status]), soData, 'pending_sales_orders.xlsx');
+    });
   }
 
   async function loadDashboard(){
