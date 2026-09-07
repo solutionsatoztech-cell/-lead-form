@@ -273,6 +273,7 @@
 
   <section id="dashSection" class="hidden">
     <div id="myRightsBar"></div>
+    <div id="myBizSnapshot"></div>
     <div id="dashSummary"></div>
     <div id="dashList"></div>
   </section>
@@ -1365,6 +1366,11 @@
       });
 
       const { data: items } = await sb.from('inventory').select('id, item_name');
+      let customerNamesList = [];
+      if (kind === 'sale') {
+        const { data: custData } = await sb.from('leads').select('customer_name');
+        customerNamesList = [...new Set((custData || []).map(c => c.customer_name).filter(Boolean))].sort();
+      }
 
       addSection.innerHTML =
         '<div class="card" style="padding:14px;">' +
@@ -1376,7 +1382,8 @@
             '</select>' +
             '<input type="number" id="ordQty" placeholder="Ordered Quantity">' +
           '</div>' +
-          '<input type="text" id="ordParty" placeholder="' + (kind === 'purchase' ? 'Vendor Name' : 'Customer Name') + '" style="margin-top:8px;">' +
+          '<input type="text" id="ordParty" list="ordPartyList" placeholder="' + (kind === 'purchase' ? 'Vendor Name' : 'Customer Name (pick from list or type new)') + '" style="margin-top:8px;">' +
+          (kind === 'sale' ? '<datalist id="ordPartyList">' + customerNamesList.map(n => '<option value="' + n + '">').join('') + '</datalist>' : '<datalist id="ordPartyList"></datalist>') +
           '<input type="text" id="ordNote" placeholder="Optional note" style="margin-top:8px;">' +
           '<button type="button" class="add-btn" id="ordSaveBtn" style="margin-top:8px;">Save Order</button>' +
           '<div class="import-msg" id="ordSaveMsg"></div>' +
@@ -1837,6 +1844,7 @@
         '<div style="font-size:13.5px;font-weight:700;color:var(--navy-dark);margin-top:4px;">' +
         (rights.length ? rights.join(' &middot; ') : 'Standard User (Leads only)') + '</div></div>';
     }
+    loadMyBizSnapshot();
     const newCount = leads.filter(l => l.status === 'New Lead').length;
     dashSummary.innerHTML =
       '<div class="summary-bar">' +
@@ -1887,6 +1895,42 @@
       });
     });
   };
+
+  async function loadMyBizSnapshot(){
+    const el = document.getElementById('myBizSnapshot');
+    if (!el) return;
+    const isAdmin = currentUser.role === 'admin';
+    const canInventory = isAdmin || currentUser.perm_inventory;
+    if (!canInventory) { el.innerHTML = ''; return; }
+
+    el.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading business snapshot...</p>';
+
+    const [{ data: items }, { data: allTxns }, { data: pOrders }, { data: sOrders }] = await Promise.all([
+      sb.from('inventory').select('*'),
+      sb.from('stock_transactions').select('*'),
+      sb.from('purchase_orders').select('*'),
+      sb.from('sales_orders').select('*')
+    ]);
+
+    const stockMap = {};
+    (allTxns || []).forEach(function(t){
+      const q = Number(t.quantity) || 0;
+      stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+    });
+    const lowStockCount = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0)).length;
+    const pendingPOs = (pOrders || []).filter(o => o.status !== 'Completed').length;
+    const pendingSOs = (sOrders || []).filter(o => o.status !== 'Completed').length;
+
+    el.innerHTML =
+      '<div class="card" style="padding:14px;margin-bottom:14px;">' +
+        '<span class="mini-label">Business Snapshot</span>' +
+        '<div class="stat-grid" style="margin-top:10px;margin-bottom:0;">' +
+          '<div class="stat-box err"><div class="num">' + lowStockCount + '</div><div class="lbl">Low Stock Items</div></div>' +
+          '<div class="stat-box amber"><div class="num">' + pendingPOs + '</div><div class="lbl">Pending Purchase Orders</div></div>' +
+          '<div class="stat-box amber" style="grid-column:span 2;"><div class="num">' + pendingSOs + '</div><div class="lbl">Pending Sales Orders</div></div>' +
+        '</div>' +
+      '</div>';
+  }
 
   async function loadDashboard(){
     if (!currentUser) return;
