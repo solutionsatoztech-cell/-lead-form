@@ -123,6 +123,41 @@
   .bulk-wa-hint{font-size:11.5px; color:var(--muted); margin:4px 0 10px;}
   .bulk-send-btn{width:100%; padding:11px; border:none; border-radius:9px; background:var(--wa); color:#fff; font-weight:800; font-size:13.5px; cursor:pointer;}
   .bulk-send-btn:disabled{background:#C9CDD2;}
+
+  /* Professional design polish */
+  header{box-shadow:0 4px 16px rgba(15,61,18,.25);}
+  .card{border:1px solid rgba(0,0,0,.03);}
+  .subtab-btn{transition:all .15s ease;}
+  .subtab-btn:hover{border-color:var(--navy);}
+  .stat-box{box-shadow:0 4px 12px rgba(0,0,0,.10); transition:transform .15s ease;}
+  .summary-box{box-shadow:0 4px 12px rgba(0,0,0,.10);}
+  .lead-card, .admin-item{transition:box-shadow .15s ease;}
+  .lead-card:hover, .admin-item:hover{box-shadow:0 4px 14px rgba(0,0,0,.06);}
+  button, .icon-btn, .tab-btn, .subtab-btn{transition:all .15s ease;}
+  .icon-btn:hover{background:#F4FAF4;}
+  input:hover, select:hover, textarea:hover{border-color:#C5DDC7;}
+
+  .priority-badge{display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.03em; padding:3px 9px; border-radius:20px; text-transform:uppercase;}
+  .priority-badge.critical{background:#FCE1E1; color:#B71C1C;}
+  .priority-badge.low{background:#FFE9CC; color:var(--amber-dark);}
+  .priority-badge.watch{background:#FFF6DA; color:#9A7B00;}
+  .reorder-item{background:var(--card); border-radius:14px; padding:16px; margin-bottom:12px; box-shadow:0 3px 10px rgba(0,0,0,.06); border-left:4px solid var(--err);}
+  .reorder-item.priority-low{border-left-color:var(--amber);}
+  .reorder-item.priority-watch{border-left-color:#D4AF00;}
+  .reorder-item .r-top{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;}
+  .reorder-item .r-name{font-weight:800; font-size:15px; color:var(--navy-dark);}
+  .reorder-item .r-sku{font-size:11.5px; color:var(--muted); font-weight:600;}
+  .reorder-metrics{display:flex; gap:10px; margin:10px 0;}
+  .reorder-metric{flex:1; background:#F7FAF7; border-radius:9px; padding:8px 10px; text-align:center;}
+  .reorder-metric .rm-num{font-size:16px; font-weight:800; color:var(--navy-dark);}
+  .reorder-metric .rm-lbl{font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; margin-top:1px;}
+  .reorder-vendor{font-size:12.5px; color:var(--text); margin-bottom:10px;}
+  .quick-purchase-row{display:flex; gap:8px;}
+  .quick-purchase-row input{flex:1;}
+  .quick-purchase-row button{padding:11px 16px; border:none; border-radius:9px; background:var(--ok); color:#fff; font-weight:800; font-size:13px; cursor:pointer; white-space:nowrap;}
+  .dashboard-header{background:linear-gradient(135deg,var(--navy) 0%,var(--navy-dark) 100%); border-radius:16px; padding:20px; margin-bottom:16px; color:#fff;}
+  .dashboard-header h2{margin:0 0 4px; font-size:19px; font-weight:800;}
+  .dashboard-header p{margin:0; font-size:12.5px; color:#BFE0C2;}
   .mini-label{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.02em;margin-bottom:4px;display:block;}
   .field-block{margin-bottom:0;}
   .excel-row{display:flex;gap:8px;margin-bottom:14px;}
@@ -240,12 +275,14 @@
   <section id="adminSection" class="hidden">
     <div class="subtabs">
       <button type="button" class="subtab-btn active" id="subReportsBtn">Reports</button>
+      <button type="button" class="subtab-btn" id="subReorderBtn">Reorder</button>
       <button type="button" class="subtab-btn" id="subLeadsBtn">All Leads</button>
       <button type="button" class="subtab-btn" id="subUsersBtn">Users</button>
       <button type="button" class="subtab-btn" id="subInventoryBtn">Inventory</button>
     </div>
 
     <div id="adminReportsPanel"></div>
+    <div id="adminReorderPanel" class="hidden"></div>
     <div id="adminLeadsPanel" class="hidden"></div>
     <div id="adminUsersPanel" class="hidden"></div>
     <div id="adminInventoryPanel" class="hidden"></div>
@@ -654,23 +691,27 @@
 
     // ============ ADMIN PANEL ============
     const subReportsBtn = document.getElementById('subReportsBtn');
+    const subReorderBtn = document.getElementById('subReorderBtn');
     const subLeadsBtn = document.getElementById('subLeadsBtn');
     const subUsersBtn = document.getElementById('subUsersBtn');
     const subInventoryBtn = document.getElementById('subInventoryBtn');
     const adminReportsPanel = document.getElementById('adminReportsPanel');
+    const adminReorderPanel = document.getElementById('adminReorderPanel');
     const adminLeadsPanel = document.getElementById('adminLeadsPanel');
     const adminUsersPanel = document.getElementById('adminUsersPanel');
     const adminInventoryPanel = document.getElementById('adminInventoryPanel');
 
     function activateSub(which){
-      [subReportsBtn, subLeadsBtn, subUsersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
-      [adminReportsPanel, adminLeadsPanel, adminUsersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
+      [subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
+      [adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
       if (which === 'reports') { subReportsBtn.classList.add('active'); adminReportsPanel.classList.remove('hidden'); loadAdminReports(); }
+      if (which === 'reorder') { subReorderBtn.classList.add('active'); adminReorderPanel.classList.remove('hidden'); loadAdminReorder(); }
       if (which === 'leads') { subLeadsBtn.classList.add('active'); adminLeadsPanel.classList.remove('hidden'); loadAdminLeads(); }
       if (which === 'users') { subUsersBtn.classList.add('active'); adminUsersPanel.classList.remove('hidden'); loadAdminUsers(); }
       if (which === 'inventory') { subInventoryBtn.classList.add('active'); adminInventoryPanel.classList.remove('hidden'); loadAdminInventory(); }
     }
     subReportsBtn.addEventListener('click', function(){ activateSub('reports'); });
+    subReorderBtn.addEventListener('click', function(){ activateSub('reorder'); });
     subLeadsBtn.addEventListener('click', function(){ activateSub('leads'); });
     subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
     subInventoryBtn.addEventListener('click', function(){ activateSub('inventory'); });
@@ -681,14 +722,115 @@
       const canUsers = isAdmin || currentUser.perm_users;
       const canInventory = isAdmin || currentUser.perm_inventory;
       subReportsBtn.classList.toggle('hidden', !isAdmin);
+      subReorderBtn.classList.toggle('hidden', !canInventory);
       subLeadsBtn.classList.toggle('hidden', !canLeads);
       subUsersBtn.classList.toggle('hidden', !canUsers);
       subInventoryBtn.classList.toggle('hidden', !canInventory);
       if (isAdmin) activateSub('reports');
+      else if (canInventory) activateSub('reorder');
       else if (canLeads) activateSub('leads');
       else if (canUsers) activateSub('users');
-      else if (canInventory) activateSub('inventory');
     }
+
+    window.loadAdminReorder = async function(){
+      adminReorderPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+
+      const [{ data: items }, { data: allTxns }] = await Promise.all([
+        sb.from('inventory').select('*'),
+        sb.from('stock_transactions').select('*')
+      ]);
+
+      const stockMap = {};
+      const lastPurchaseMap = {};
+      (allTxns || []).forEach(function(t){
+        const q = Number(t.quantity) || 0;
+        stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+        if (t.type === 'purchase') {
+          const existing = lastPurchaseMap[t.item_id];
+          if (!existing || new Date(t.created_at) > new Date(existing.created_at)) lastPurchaseMap[t.item_id] = t;
+        }
+      });
+
+      const needsReorder = (items || [])
+        .map(function(it){
+          const stock = stockMap[it.id] || 0;
+          const reorderLvl = Number(it.reorder_level) || 0;
+          return { it: it, stock: stock, reorderLvl: reorderLvl, ratio: reorderLvl > 0 ? stock / reorderLvl : (stock <= 0 ? 0 : 99) };
+        })
+        .filter(function(x){ return x.stock <= x.reorderLvl; })
+        .sort(function(a, b){ return a.ratio - b.ratio; });
+
+      const totalSuggestedValue = needsReorder.reduce(function(sum, x){
+        const suggestedQty = Math.max(x.reorderLvl * 2 - x.stock, x.reorderLvl - x.stock, 1);
+        return sum + suggestedQty * (Number(x.it.unit_price) || 0);
+      }, 0);
+
+      const vendorsInvolved = new Set(needsReorder.map(function(x){
+        const lastP = lastPurchaseMap[x.it.id];
+        return (lastP && lastP.vendor) || x.it.supplier || null;
+      }).filter(Boolean)).size;
+
+      const headerHtml =
+        '<div class="dashboard-header">' +
+          '<h2>Reorder Dashboard</h2>' +
+          '<p>Live view of items needing purchase, based on current stock, reorder levels and recent sales.</p>' +
+        '</div>' +
+        '<div class="stat-grid">' +
+          '<div class="stat-box err"><div class="num">' + needsReorder.length + '</div><div class="lbl">Items Needing Reorder</div></div>' +
+          '<div class="stat-box amber"><div class="num">Rs.' + totalSuggestedValue.toLocaleString('en-IN') + '</div><div class="lbl">Suggested Purchase Value</div></div>' +
+          '<div class="stat-box" style="grid-column:span 2;"><div class="num">' + vendorsInvolved + '</div><div class="lbl">Vendors Involved</div></div>' +
+        '</div>';
+
+      if (!needsReorder.length) {
+        adminReorderPanel.innerHTML = headerHtml + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">All items are well stocked. No reorder needed right now.</p></div>';
+        return;
+      }
+
+      const itemsHtml = needsReorder.map(function(x){
+        const it = x.it;
+        const suggestedQty = Math.max(x.reorderLvl * 2 - x.stock, x.reorderLvl - x.stock, 1);
+        const lastP = lastPurchaseMap[it.id];
+        const vendor = (lastP && lastP.vendor) || it.supplier || '';
+        const priority = x.stock <= 0 ? 'critical' : (x.ratio <= 0.5 ? 'low' : 'watch');
+        const priorityLabel = priority === 'critical' ? 'Out of Stock' : (priority === 'low' ? 'Low Stock' : 'Reorder Soon');
+        return '<div class="reorder-item priority-' + priority + '" data-itemid="' + it.id + '" data-price="' + (it.unit_price||0) + '">' +
+          '<div class="r-top">' +
+            '<div><div class="r-name">' + it.item_name + '</div><div class="r-sku">' + (it.sku_code || 'No SKU') + (it.item_group ? (' &middot; ' + it.item_group) : '') + '</div></div>' +
+            '<span class="priority-badge ' + priority + '">' + priorityLabel + '</span>' +
+          '</div>' +
+          '<div class="reorder-metrics">' +
+            '<div class="reorder-metric"><div class="rm-num">' + x.stock + '</div><div class="rm-lbl">Current Stock</div></div>' +
+            '<div class="reorder-metric"><div class="rm-num">' + x.reorderLvl + '</div><div class="rm-lbl">Reorder Level</div></div>' +
+            '<div class="reorder-metric"><div class="rm-num">' + suggestedQty + '</div><div class="rm-lbl">Suggest Buy</div></div>' +
+          '</div>' +
+          '<div class="reorder-vendor">' + (vendor ? ('Vendor: <b>' + vendor + '</b>' + (lastP ? (' &middot; last bought ' + new Date(lastP.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })) : '')) : 'No vendor on record') + '</div>' +
+          '<div class="quick-purchase-row">' +
+            '<input type="number" class="quick-qty" placeholder="Qty" value="' + suggestedQty + '">' +
+            '<input type="text" class="quick-vendor" placeholder="Vendor" value="' + vendor + '">' +
+            '<button type="button" class="quick-log-btn">Log Purchase</button>' +
+          '</div>' +
+          '<div class="lead-msg"></div>' +
+        '</div>';
+      }).join('');
+
+      adminReorderPanel.innerHTML = headerHtml + itemsHtml;
+
+      adminReorderPanel.querySelectorAll('.quick-log-btn').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          const card = btn.closest('.reorder-item');
+          const itemId = card.getAttribute('data-itemid');
+          const qty = Number(card.querySelector('.quick-qty').value);
+          const vendor = card.querySelector('.quick-vendor').value.trim();
+          const msgEl = card.querySelector('.lead-msg');
+          if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
+          btn.disabled = true; btn.textContent = 'Saving...';
+          await sb.from('stock_transactions').insert({ item_id: itemId, type: 'purchase', quantity: qty, vendor: vendor });
+          msgEl.textContent = 'Purchase logged!'; msgEl.className = 'lead-msg ok';
+          setTimeout(function(){ loadAdminReorder(); }, 800);
+        });
+      });
+    };
+
 
     window.loadAdminReports = async function(){
       adminReportsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
@@ -712,6 +854,20 @@
       });
       const lowStockItems = (items || []).filter(it => (stockMap[it.id] || 0) <= (Number(it.reorder_level)||0));
 
+      const itemsByIdEarly = {};
+      (items || []).forEach(function(it){ itemsByIdEarly[it.id] = it; });
+      let totalPurchaseValue = 0, totalSalesValue = 0, totalStockValue = 0;
+      (allTxns || []).forEach(function(t){
+        const it = itemsByIdEarly[t.item_id];
+        const val = (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
+        if (t.type === 'purchase' || t.type === 'opening') totalPurchaseValue += val;
+        if (t.type === 'sale') totalSalesValue += val;
+      });
+      (items || []).forEach(function(it){
+        totalStockValue += (stockMap[it.id] || 0) * (Number(it.unit_price)||0);
+      });
+
+
       const byUser = {};
       (leads || []).forEach(function(l){
         const u = l.assigned_to || 'Unassigned';
@@ -733,10 +889,22 @@
           '</div>';
       }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No activity yet.</p>';
 
+      const lastPurchaseMapReport = {};
+      (allTxns || []).forEach(function(t){
+        if (t.type !== 'purchase') return;
+        const existing = lastPurchaseMapReport[t.item_id];
+        if (!existing || new Date(t.created_at) > new Date(existing.created_at)) lastPurchaseMapReport[t.item_id] = t;
+      });
       const reorderHtml = lowStockItems.map(function(it){
+        const stock = stockMap[it.id] || 0;
+        const reorderLvl = Number(it.reorder_level) || 0;
+        const suggestedQty = Math.max(reorderLvl * 2 - stock, reorderLvl - stock, 1);
+        const lastP = lastPurchaseMapReport[it.id];
+        const vendorTxt = lastP ? (' &middot; Last from ' + (lastP.vendor || it.supplier || 'Unknown vendor')) : (it.supplier ? (' &middot; Usual vendor: ' + it.supplier) : '');
         return '<div class="activity-item" style="border-left-color:var(--err);">' +
           '<div class="who">' + it.item_name + '</div>' +
-          '<div class="what">Stock: ' + (stockMap[it.id]||0) + ' (Reorder Level: ' + (it.reorder_level||0) + ')</div>' +
+          '<div class="what">Stock: ' + stock + ' (Reorder Level: ' + reorderLvl + ')' + vendorTxt + '</div>' +
+          '<div class="what" style="color:var(--err);font-weight:700;">Suggested Purchase: ' + suggestedQty + ' units</div>' +
           '</div>';
       }).join('') || '<p style="color:#7C8B99;text-align:center;margin:8px 0;">All items are well stocked.</p>';
 
@@ -757,6 +925,11 @@
           '<div class="stat-box"><div class="num">' + totalLeads + '</div><div class="lbl">Total Leads</div></div>' +
           '<div class="stat-box ok"><div class="num">' + converted + '</div><div class="lbl">Converted</div></div>' +
           '<div class="stat-box err"><div class="num">' + lowStockItems.length + '</div><div class="lbl">Low Stock Items</div></div>' +
+        '</div>' +
+        '<div class="stat-grid">' +
+          '<div class="stat-box ok"><div class="num">Rs.' + totalPurchaseValue.toLocaleString('en-IN') + '</div><div class="lbl">Total Purchase Value</div></div>' +
+          '<div class="stat-box err"><div class="num">Rs.' + totalSalesValue.toLocaleString('en-IN') + '</div><div class="lbl">Total Sales Value</div></div>' +
+          '<div class="stat-box" style="grid-column:span 2;"><div class="num">Rs.' + totalStockValue.toLocaleString('en-IN') + '</div><div class="lbl">Current Stock Value (what we have now)</div></div>' +
         '</div>' +
         '<div class="card"><div class="section-title" style="margin-top:0;">Leads by User</div>' + userStatsHtml + '</div>' +
         '<div class="card"><div class="section-title" style="margin-top:0;">Reorder Alerts</div>' + reorderHtml + '</div>' +
@@ -982,8 +1155,109 @@
       });
     }
 
-    window.loadAdminInventory = async function(){
+    window.loadAdminInventory = function(){
       adminInventoryPanel.innerHTML =
+        '<div class="subtabs">' +
+          '<button type="button" class="subtab-btn active" id="invSubItemsBtn">Items</button>' +
+          '<button type="button" class="subtab-btn" id="invSubPurchaseBtn">Purchases</button>' +
+          '<button type="button" class="subtab-btn" id="invSubSalesBtn">Sales</button>' +
+        '</div>' +
+        '<div id="invItemsPanel"></div>' +
+        '<div id="invPurchasePanel" class="hidden"></div>' +
+        '<div id="invSalesPanel" class="hidden"></div>';
+
+      const invItemsBtn = document.getElementById('invSubItemsBtn');
+      const invPurchaseBtn = document.getElementById('invSubPurchaseBtn');
+      const invSalesBtn = document.getElementById('invSubSalesBtn');
+      const invItemsPanel = document.getElementById('invItemsPanel');
+      const invPurchasePanel = document.getElementById('invPurchasePanel');
+      const invSalesPanel = document.getElementById('invSalesPanel');
+
+      function activateInvSub(which){
+        [invItemsBtn, invPurchaseBtn, invSalesBtn].forEach(b => b.classList.remove('active'));
+        [invItemsPanel, invPurchasePanel, invSalesPanel].forEach(p => p.classList.add('hidden'));
+        if (which === 'items') { invItemsBtn.classList.add('active'); invItemsPanel.classList.remove('hidden'); loadInventoryItems(); }
+        if (which === 'purchase') { invPurchaseBtn.classList.add('active'); invPurchasePanel.classList.remove('hidden'); loadInventoryLedger('purchase'); }
+        if (which === 'sales') { invSalesBtn.classList.add('active'); invSalesPanel.classList.remove('hidden'); loadInventoryLedger('sale'); }
+      }
+      invItemsBtn.addEventListener('click', function(){ activateInvSub('items'); });
+      invPurchaseBtn.addEventListener('click', function(){ activateInvSub('purchase'); });
+      invSalesBtn.addEventListener('click', function(){ activateInvSub('sales'); });
+      activateInvSub('items');
+    };
+
+    async function loadInventoryLedger(type){
+      const panelEl = type === 'purchase' ? document.getElementById('invPurchasePanel') : document.getElementById('invSalesPanel');
+      panelEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+
+      const [{ data: items }, { data: txns }] = await Promise.all([
+        sb.from('inventory').select('id, item_name, unit_price, supplier, reorder_level'),
+        sb.from('stock_transactions').select('*').eq('type', type).order('created_at', { ascending: false })
+      ]);
+      const itemsById = {};
+      (items || []).forEach(function(it){ itemsById[it.id] = it; });
+
+      const totalQty = (txns || []).reduce((s, t) => s + (Number(t.quantity)||0), 0);
+      const totalValue = (txns || []).reduce((s, t) => {
+        const it = itemsById[t.item_id];
+        return s + (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
+      }, 0);
+
+      const vendorFieldHtml = type === 'purchase'
+        ? '<input type="text" id="ledgerVendor" placeholder="Vendor (leave blank to use item supplier)" style="margin-top:8px;">'
+        : '';
+
+      const addFormHtml =
+        '<div class="card" style="padding:14px;">' +
+          '<span class="mini-label">Add ' + (type === 'purchase' ? 'Purchase' : 'Sale') + ' Entry</span>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<select id="ledgerItemSelect"><option value="">-- Select Item --</option>' +
+            (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('') +
+            '</select>' +
+            '<input type="number" id="ledgerQty" placeholder="Quantity">' +
+          '</div>' +
+          vendorFieldHtml +
+          '<input type="text" id="ledgerNote" placeholder="Optional note" style="margin-top:8px;">' +
+          '<button type="button" class="add-btn" id="ledgerSaveBtn" style="margin-top:8px;">Save Entry</button>' +
+        '</div>';
+
+      const summaryHtml =
+        '<div class="stat-grid">' +
+          '<div class="stat-box ' + (type === 'purchase' ? 'ok' : 'err') + '"><div class="num">' + totalQty + '</div><div class="lbl">Total Qty (' + (type === 'purchase' ? 'Purchased' : 'Sold') + ')</div></div>' +
+          '<div class="stat-box"><div class="num">Rs.' + totalValue.toLocaleString('en-IN') + '</div><div class="lbl">Total Value</div></div>' +
+        '</div>';
+
+      const listHtml = (txns || []).length ? (txns || []).map(function(t){
+        const it = itemsById[t.item_id];
+        const d = t.created_at ? new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+        const val = (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
+        const vendorTxt = (type === 'purchase' && (t.vendor || (it && it.supplier))) ? (' &middot; from ' + (t.vendor || it.supplier)) : '';
+        return '<div class="activity-item" style="border-left-color:' + (type === 'purchase' ? 'var(--ok)' : 'var(--err)') + ';">' +
+          '<div class="who">' + (it ? it.item_name : 'Item') + ' &middot; ' + t.quantity + ' units &middot; Rs.' + val.toLocaleString('en-IN') + vendorTxt + '</div>' +
+          '<div class="when">' + d + (t.note ? (' &middot; ' + t.note) : '') + '</div>' +
+          '</div>';
+      }).join('') : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No ' + type + ' entries yet.</p>';
+
+      panelEl.innerHTML = addFormHtml + summaryHtml + '<div class="card"><div class="section-title" style="margin-top:0;">' + (type === 'purchase' ? 'Purchase' : 'Sales') + ' History</div>' + listHtml + '</div>';
+
+      document.getElementById('ledgerSaveBtn').addEventListener('click', async function(){
+        const itemId = document.getElementById('ledgerItemSelect').value;
+        const qty = Number(document.getElementById('ledgerQty').value);
+        const note = document.getElementById('ledgerNote').value.trim();
+        const vendorInput = document.getElementById('ledgerVendor');
+        const vendorVal = vendorInput ? vendorInput.value.trim() : '';
+        if (!itemId) { alert('Select an item'); return; }
+        if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
+        const entry = { item_id: itemId, type: type, quantity: qty, note: note };
+        if (type === 'purchase') entry.vendor = vendorVal || (itemsById[itemId] ? itemsById[itemId].supplier : '') || '';
+        await sb.from('stock_transactions').insert(entry);
+        loadInventoryLedger(type);
+      });
+    }
+
+    async function loadInventoryItems(){
+      const listEl0 = document.getElementById('invItemsPanel');
+      listEl0.innerHTML =
         '<div class="excel-row">' +
           '<button type="button" class="excel-btn" id="exportItemsBtn">Export to Excel</button>' +
           '<label class="excel-btn import">Import from Excel<input type="file" id="importItemsFile" accept=".xlsx,.xls,.csv"></label>' +
@@ -1001,7 +1275,7 @@
 
       const [{ data, error }, { data: txns }] = await Promise.all([
         sb.from('inventory').select('*').order('item_name'),
-        sb.from('stock_transactions').select('item_id, type, quantity')
+        sb.from('stock_transactions').select('*')
       ]);
       const listEl = document.getElementById('itemsList');
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
@@ -1032,14 +1306,21 @@
           const { error: impErr } = await sb.from('inventory').insert(cleanRows);
           if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
           msgEl.textContent = cleanRows.length + ' items imported!'; msgEl.className = 'import-msg ok';
-          loadAdminInventory();
+          loadInventoryItems();
         });
       });
 
       const stockMap = {};
+      const lastPurchaseMap = {};
       (txns || []).forEach(function(t){
         const q = Number(t.quantity) || 0;
         stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+        if (t.type === 'purchase') {
+          const existing = lastPurchaseMap[t.item_id];
+          if (!existing || new Date(t.created_at) > new Date(existing.created_at)) {
+            lastPurchaseMap[t.item_id] = t;
+          }
+        }
       });
 
       // Populate filter dropdowns with distinct values
@@ -1069,10 +1350,19 @@
 
         listEl.innerHTML = filtered.map(function(it){
           const stock = stockMap[it.id] || 0;
-          const low = stock <= (Number(it.reorder_level)||0);
+          const reorderLvl = Number(it.reorder_level) || 0;
+          const low = stock <= reorderLvl;
+          const lastP = lastPurchaseMap[it.id];
+          const lastPurchaseTxt = lastP
+            ? 'Last Purchase: ' + new Date(lastP.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) + ' &middot; ' + lastP.quantity + ' units' + ((lastP.vendor || it.supplier) ? (' from ' + (lastP.vendor || it.supplier)) : '')
+            : 'No purchase recorded yet';
+          const suggestedQty = low ? Math.max(reorderLvl * 2 - stock, reorderLvl - stock, 1) : 0;
           return '<div class="admin-item" data-id="' + it.id + '">' +
             '<div class="row"><div><div class="title">' + (it.sku_code ? it.sku_code + ' &middot; ' : '') + it.item_name + '</div>' +
-            '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + (it.supplier ? (' &middot; ' + it.supplier) : '') + '</div></div>' +
+            '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + ' / Reorder Level: ' + reorderLvl + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; ' + (it.department||'No dept') + ' &middot; Rs.' + (it.unit_price||0) + '</div>' +
+            '<div class="sub">' + lastPurchaseTxt + '</div>' +
+            (low ? '<div class="sub" style="color:var(--err);font-weight:700;">Suggested Purchase Qty: ' + suggestedQty + ' units</div>' : '') +
+            '</div>' +
             '<div class="btns"><button type="button" class="icon-btn stock-item">+ Stock</button><button type="button" class="icon-btn edit-item">Edit</button>' +
             '<button type="button" class="icon-btn danger del-item">Delete</button></div></div>' +
             '<div class="edit-slot"></div></div>';
@@ -1098,7 +1388,7 @@
             if (!confirm('Delete this item?')) return;
             const id = b.closest('.admin-item').getAttribute('data-id');
             await sb.from('inventory').delete().eq('id', id);
-            loadAdminInventory();
+            loadInventoryItems();
           });
         });
       }
@@ -1108,7 +1398,7 @@
       vendorSelect.addEventListener('change', renderItemsList);
 
       renderItemsList();
-    };
+    }
 
 
     function showStockForm(itemId, slotEl){
@@ -1128,7 +1418,7 @@
         const note = slotEl.querySelector('.st-note').value.trim();
         if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
         await sb.from('stock_transactions').insert({ item_id: itemId, type: type, quantity: qty, note: note });
-        loadAdminInventory();
+        loadInventoryItems();
       });
     }
 
@@ -1175,7 +1465,7 @@
         } else {
           await sb.from('inventory').insert(payload);
         }
-        loadAdminInventory();
+        loadInventoryItems();
       });
     }
   }
