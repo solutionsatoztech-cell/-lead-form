@@ -470,8 +470,10 @@
       if (data) fillAssignDropdown(data);
     }
     async function loadItems(){
-      const { data: items } = await sb.from('inventory').select('id, item_name, department');
-      const { data: txns } = await sb.from('stock_transactions').select('item_id, type, quantity');
+      const [{ data: items }, { data: txns }] = await Promise.all([
+        sb.from('inventory').select('id, item_name, department'),
+        sb.from('stock_transactions').select('item_id, type, quantity')
+      ]);
       if (items) {
         const stockMap = {};
         (txns || []).forEach(function(t){
@@ -589,20 +591,19 @@
     window.loadAdminReports = async function(){
       adminReportsPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
-      const [{ data: leads }, { data: logs }, { data: items }, { data: txns }] = await Promise.all([
+      const [{ data: leads }, { data: logs }, { data: items }, { data: allTxns }] = await Promise.all([
         sb.from('leads').select('*'),
         sb.from('lead_log').select('*').order('created_at', { ascending: false }).limit(20),
         sb.from('inventory').select('*'),
-        sb.from('stock_transactions').select('*').order('created_at', { ascending: false }).limit(20)
+        sb.from('stock_transactions').select('*').order('created_at', { ascending: false })
       ]);
+      const txns = (allTxns || []).slice(0, 20);
 
       const totalLeads = (leads || []).length;
       const newLeads = (leads || []).filter(l => l.status === 'New Lead').length;
       const converted = (leads || []).filter(l => l.status === 'Converted').length;
 
       const stockMap = {};
-      (txns || []).forEach(function(t){});
-      const { data: allTxns } = await sb.from('stock_transactions').select('item_id, type, quantity');
       (allTxns || []).forEach(function(t){
         const q = Number(t.quantity) || 0;
         stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
@@ -896,7 +897,10 @@
         '<button type="button" class="add-btn" id="addItemBtn">+ Add New Item</button><div id="itemsList"></div>';
       document.getElementById('addItemBtn').addEventListener('click', function(){ showItemForm(null); });
 
-      const { data, error } = await sb.from('inventory').select('*').order('item_name');
+      const [{ data, error }, { data: txns }] = await Promise.all([
+        sb.from('inventory').select('*').order('item_name'),
+        sb.from('stock_transactions').select('item_id, type, quantity')
+      ]);
       const listEl = document.getElementById('itemsList');
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
 
@@ -930,7 +934,6 @@
         });
       });
 
-      const { data: txns } = await sb.from('stock_transactions').select('item_id, type, quantity');
       const stockMap = {};
       (txns || []).forEach(function(t){
         const q = Number(t.quantity) || 0;
