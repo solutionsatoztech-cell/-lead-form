@@ -1402,17 +1402,25 @@
       });
 
       const { data: items } = await sb.from('inventory').select('id, item_name');
-      let customerNamesList = [];
+      let partyNamesList = [];
       if (kind === 'sale') {
         const { data: custData } = await sb.from('leads').select('customer_name');
-        customerNamesList = [...new Set((custData || []).map(c => c.customer_name).filter(Boolean))].sort();
+        partyNamesList = [...new Set((custData || []).map(c => c.customer_name).filter(Boolean))].sort();
+      } else {
+        const [{ data: invData }, { data: txnData }] = await Promise.all([
+          sb.from('inventory').select('supplier'),
+          sb.from('stock_transactions').select('vendor').eq('type', 'purchase')
+        ]);
+        const fromInv = (invData || []).map(r => r.supplier);
+        const fromTxn = (txnData || []).map(r => r.vendor);
+        partyNamesList = [...new Set(fromInv.concat(fromTxn).filter(Boolean))].sort();
       }
 
       addSection.innerHTML =
         '<div class="card" style="padding:14px;">' +
           '<span class="mini-label">New ' + (kind === 'purchase' ? 'Purchase Order (to Vendor)' : 'Sales Order (from Customer)') + '</span>' +
-          '<input type="text" id="ordParty" list="ordPartyList" placeholder="' + (kind === 'purchase' ? 'Vendor Name' : 'Customer Name (pick from list or type new)') + '" style="margin-top:8px;">' +
-          (kind === 'sale' ? '<datalist id="ordPartyList">' + customerNamesList.map(n => '<option value="' + n + '">').join('') + '</datalist>' : '<datalist id="ordPartyList"></datalist>') +
+          '<input type="text" id="ordParty" list="ordPartyList" placeholder="' + (kind === 'purchase' ? 'Vendor Name (pick from list or type new)' : 'Customer Name (pick from list or type new)') + '" style="margin-top:8px;">' +
+          '<datalist id="ordPartyList">' + partyNamesList.map(n => '<option value="' + n + '">').join('') + '</datalist>' +
           '<div class="row2" style="margin-top:8px;">' +
             '<select id="ordItemSelect">' +
               '<option value="">-- Select Item --</option>' +
@@ -1606,20 +1614,30 @@
         return s + (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
       }, 0);
 
+      let ledgerPartyList = [];
+      if (type === 'purchase') {
+        ledgerPartyList = [...new Set((items || []).map(it => it.supplier).concat((txns || []).map(t => t.vendor)).filter(Boolean))].sort();
+      } else {
+        const { data: custData } = await sb.from('leads').select('customer_name');
+        ledgerPartyList = [...new Set((custData || []).map(c => c.customer_name).filter(Boolean))].sort();
+      }
+
       const vendorFieldHtml = type === 'purchase'
-        ? '<input type="text" id="ledgerVendor" placeholder="Vendor (leave blank to use item supplier)" style="margin-top:8px;">'
-        : '';
+        ? '<input type="text" id="ledgerVendor" list="ledgerPartyList" placeholder="Vendor (pick from list, type new, or leave blank to use item supplier)" style="margin-top:8px;">'
+        : '<input type="text" id="ledgerCustomer" list="ledgerPartyList" placeholder="Customer Name (pick from list or type new, optional)" style="margin-top:8px;">' ;
+      const partyDatalistHtml = '<datalist id="ledgerPartyList">' + ledgerPartyList.map(n => '<option value="' + n + '">').join('') + '</datalist>';
 
       const addFormHtml =
         '<div class="card" style="padding:14px;">' +
           '<span class="mini-label">Add ' + (type === 'purchase' ? 'Purchase' : 'Sale') + ' Entry</span>' +
+          vendorFieldHtml +
+          partyDatalistHtml +
           '<div class="row2" style="margin-top:8px;">' +
             '<select id="ledgerItemSelect"><option value="">-- Select Item --</option>' +
             (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('') +
             '</select>' +
             '<input type="number" id="ledgerQty" placeholder="Quantity">' +
           '</div>' +
-          vendorFieldHtml +
           '<input type="text" id="ledgerNote" placeholder="Optional note" style="margin-top:8px;">' +
           '<button type="button" class="add-btn" id="ledgerSaveBtn" style="margin-top:8px;">Save Entry</button>' +
         '</div>';
@@ -1634,7 +1652,7 @@
         const it = itemsById[t.item_id];
         const d = t.created_at ? new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
         const val = (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
-        const vendorTxt = (type === 'purchase' && (t.vendor || (it && it.supplier))) ? (' &middot; from ' + (t.vendor || it.supplier)) : '';
+        const vendorTxt = (type === 'purchase' && (t.vendor || (it && it.supplier))) ? (' &middot; from ' + (t.vendor || it.supplier)) : (type === 'sale' && t.customer_name ? (' &middot; to ' + t.customer_name) : '');
         return '<div class="activity-item" style="border-left-color:' + (type === 'purchase' ? 'var(--ok)' : 'var(--err)') + ';">' +
           '<div class="who">' + (it ? it.item_name : 'Item') + ' &middot; ' + t.quantity + ' units &middot; Rs.' + val.toLocaleString('en-IN') + vendorTxt + '</div>' +
           '<div class="when">' + d + (t.note ? (' &middot; ' + t.note) : '') + '</div>' +
@@ -1691,10 +1709,13 @@
         const note = document.getElementById('ledgerNote').value.trim();
         const vendorInput = document.getElementById('ledgerVendor');
         const vendorVal = vendorInput ? vendorInput.value.trim() : '';
+        const customerInput = document.getElementById('ledgerCustomer');
+        const customerVal = customerInput ? customerInput.value.trim() : '';
         if (!itemId) { alert('Select an item'); return; }
         if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
         const entry = { item_id: itemId, type: type, quantity: qty, note: note };
         if (type === 'purchase') entry.vendor = vendorVal || (itemsById[itemId] ? itemsById[itemId].supplier : '') || '';
+        if (type === 'sale') entry.customer_name = customerVal;
         await sb.from('stock_transactions').insert(entry);
         loadInventoryLedger(type);
       });
