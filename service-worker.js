@@ -1,4 +1,4 @@
-const CACHE_NAME = "lead-form-v1";
+const CACHE_NAME = "lead-form-v2";
 const FILES_TO_CACHE = [
   "./index.html",
   "./manifest.json",
@@ -28,12 +28,23 @@ self.addEventListener("activate", function (event) {
 });
 
 self.addEventListener("fetch", function (event) {
-  // Never cache POST requests to the Apps Script API
-  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+
+  // Only ever handle same-origin GET requests for our own static files.
+  // Everything else (Supabase API calls, WhatsApp links, etc.) is left
+  // completely untouched so the browser handles it normally.
+  if (event.request.method !== "GET" || url.origin !== self.location.origin) {
+    return;
+  }
 
   event.respondWith(
-    fetch(event.request).catch(function () {
-      return caches.match(event.request);
-    })
+    fetch(event.request)
+      .catch(function () {
+        return caches.match(event.request);
+      })
+      .then(function (response) {
+        // Always resolve to a real Response, never undefined
+        return response || new Response("Offline", { status: 503, statusText: "Offline" });
+      })
   );
 });
