@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<meta name="theme-color" content="#1F4E78">
+<meta name="theme-color" content="#1B5E20">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -11,8 +11,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{
-    --navy:#1F4E78; --navy-dark:#153955; --amber:#E2790E; --amber-dark:#C4650A;
-    --bg:#EEF2F6; --card:#FFFFFF; --text:#1A2530; --muted:#7C8B99; --line:#E3E9EF;
+    --navy:#1B5E20; --navy-dark:#0F3D12; --amber:#43A047; --amber-dark:#2E7D32;
+    --bg:#F4FAF4; --card:#FFFFFF; --text:#1A2530; --muted:#7C8B99; --line:#E1EDE1;
     --ok:#2E7D32; --err:#C62828; --wa:#25D366;
   }
   *{box-sizing:border-box;}
@@ -377,10 +377,16 @@
           '<span class="badge ' + (untouched ? 'new' : '') + '">' + l.status + '</span></div>' +
           '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
           '<div class="meta">' + dateStr + ' &middot; ' + roleTag + (untouched ? ' &middot; <b style="color:var(--amber-dark);">No action taken yet</b>' : '') + '</div>' +
-          '<div class="lead-actions"><div class="row2">' +
-            '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
-            '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
-          '</div></div>' +
+          '<div class="lead-actions">' +
+            '<div class="row2">' +
+              '<a href="tel:' + l.phone + '" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;">Call</a>' +
+              '<a href="https://wa.me/' + toWaNumber(l.phone) + '" target="_blank" class="icon-btn" style="flex:1;text-align:center;text-decoration:none;color:var(--wa);border-color:#B7E5C6;">WhatsApp</a>' +
+            '</div>' +
+            '<div class="row2">' +
+              '<button type="button" class="icon-btn edit-customer" style="flex:1;">Edit</button>' +
+              '<button type="button" class="icon-btn danger del-customer" style="flex:1;">Delete</button>' +
+            '</div>' +
+          '</div>' +
           '<div class="edit-slot"></div>' +
           '</div>';
       }).join('');
