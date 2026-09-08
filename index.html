@@ -247,6 +247,7 @@
     <div class="menu-item" id="navMasters"><span>Masters</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navTasks"><span>Task Checklist</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navBackup"><span>Backup All Data</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navViewBackup"><span>View Backup File</span><span class="mi-arrow">&#8250;</span></div>
   </div>
 
   <div class="tabs hidden" id="mainTabs">
@@ -522,6 +523,16 @@
       document.head.appendChild(s);
     });
   }
+  function loadCryptoLib(){
+    return new Promise(function(resolve, reject){
+      if (window.CryptoJS) return resolve();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js';
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ reject(new Error('Failed to load security library')); };
+      document.head.appendChild(s);
+    });
+  }
 
   async function exportToExcel(data, filename, sheetName){
     if (!data || !data.length) { alert('No data to export.'); return; }
@@ -535,9 +546,14 @@
   async function downloadFullBackup(){
     const btn = document.getElementById('navBackup');
     const originalText = btn.innerHTML;
+
+    const password = prompt('Set a password to protect this backup file.\n\nYou will need this exact password to open/view the backup later (only inside this app).');
+    if (!password) return;
+    if (password.length < 4) { alert('Please use a password of at least 4 characters.'); return; }
+
     btn.innerHTML = '<span>Preparing backup...</span>';
     try {
-      await loadXLSXLib();
+      await loadCryptoLib();
       const [
         { data: leads }, { data: users }, { data: inventory },
         { data: stockTxns }, { data: purchaseOrders }, { data: salesOrders },
@@ -553,28 +569,121 @@
         sb.from('lead_log').select('*')
       ]);
 
-      const wb = XLSX.utils.book_new();
-      function addSheet(name, data){
-        const rows = (data && data.length) ? data : [{ note: 'No data' }];
-        const ws = XLSX.utils.json_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb, ws, name.substring(0, 31));
-      }
-      addSheet('Leads', leads);
-      addSheet('Users', users);
-      addSheet('Inventory', inventory);
-      addSheet('Stock Transactions', stockTxns);
-      addSheet('Purchase Orders', purchaseOrders);
-      addSheet('Sales Orders', salesOrders);
-      addSheet('Steps', steps);
-      addSheet('Lead Log', leadLog);
+      const payload = {
+        app: 'RPGH Lead Capture', backupDate: new Date().toISOString(),
+        leads: leads || [], users: users || [], inventory: inventory || [],
+        stock_transactions: stockTxns || [], purchase_orders: purchaseOrders || [],
+        sales_orders: salesOrders || [], steps: steps || [], lead_log: leadLog || []
+      };
 
+      const jsonStr = JSON.stringify(payload);
+      const encrypted = CryptoJS.AES.encrypt(jsonStr, password).toString();
+      const fileContent = 'RPGHBAK1\n' + encrypted;
+
+      const blob = new Blob([fileContent], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
       const today = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, 'rpgh_full_backup_' + today + '.xlsx');
+      a.href = url;
+      a.download = 'rpgh_backup_' + today + '.rpghbak';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     } catch (err) {
       alert('Backup failed: ' + err.message);
     } finally {
       btn.innerHTML = originalText;
     }
+  }
+
+  async function viewEncryptedBackup(){
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = '.rpghbak';
+    fileInput.onchange = async function(e){
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async function(){
+        const content = reader.result;
+        const lines = content.split('\n');
+        if (lines[0] !== 'RPGHBAK1') { alert('This does not look like a valid RPGH backup file.'); return; }
+        const encrypted = lines.slice(1).join('\n');
+        const password = prompt('Enter the password for this backup file:');
+        if (!password) return;
+        try {
+          await loadCryptoLib();
+          const bytes = CryptoJS.AES.decrypt(encrypted, password);
+          const jsonStr = bytes.toString(CryptoJS.enc.Utf8);
+          if (!jsonStr) throw new Error('wrong password');
+          const data = JSON.parse(jsonStr);
+          showBackupViewer(data);
+        } catch (err) {
+          alert('Could not open this backup — wrong password or corrupted file.');
+        }
+      };
+      reader.readAsText(file);
+    };
+    fileInput.click();
+  }
+
+  function showBackupViewer(data){
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#fff;border-radius:14px;max-width:600px;width:100%;max-height:85vh;overflow:auto;padding:18px;';
+    const tables = ['leads', 'users', 'inventory', 'stock_transactions', 'purchase_orders', 'sales_orders', 'steps', 'lead_log'];
+    let html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<h2 style="margin:0;font-size:17px;color:var(--navy-dark);">Backup Viewer</h2>' +
+      '<button id="bvCloseBtn" style="background:var(--navy);color:#fff;border:none;border-radius:8px;padding:6px 14px;font-weight:700;cursor:pointer;">Close</button></div>' +
+      '<p style="font-size:12px;color:var(--muted);margin:0 0 10px;">Backed up on: ' + (data.backupDate ? new Date(data.backupDate).toLocaleString('en-GB') : 'Unknown') + '</p>' +
+      '<div style="background:#FFF6DA;border:1px solid #E8CE6E;border-radius:9px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:#7A6300;">' +
+      '<b>Restore warning:</b> Restoring a table replaces ALL its current live data with this backup\'s data. This cannot be undone. Only restore if you know the live data is wrong or lost.</div>';
+    tables.forEach(function(t){
+      const rows = data[t] || [];
+      html += '<div class="card" style="padding:10px 12px;margin-bottom:10px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<span class="mini-label" style="margin:0;">' + t.replace(/_/g, ' ') + ' (' + rows.length + ' rows)</span>' +
+        '<button type="button" class="bv-restore-btn" data-table="' + t + '" style="background:var(--err);color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;" ' + (rows.length ? '' : 'disabled') + '>Restore This Table</button>' +
+        '</div><div class="bv-restore-msg" data-table-msg="' + t + '" style="font-size:11.5px;margin-top:6px;"></div></div>';
+      if (rows.length) {
+        const headers = Object.keys(rows[0]);
+        html += tableHtml(headers, rows.slice(0, 100).map(r => headers.map(h => r[h] === null || r[h] === undefined ? '' : String(r[h]))));
+        if (rows.length > 100) html += '<p style="font-size:11px;color:var(--muted);">Showing first 100 of ' + rows.length + ' rows.</p>';
+      }
+    });
+    box.innerHTML = html;
+    modal.appendChild(box);
+    document.body.appendChild(modal);
+    document.getElementById('bvCloseBtn').addEventListener('click', function(){ modal.remove(); });
+    modal.addEventListener('click', function(e){ if (e.target === modal) modal.remove(); });
+
+    box.querySelectorAll('.bv-restore-btn').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        const t = btn.getAttribute('data-table');
+        const rows = data[t] || [];
+        const msgEl = box.querySelector('[data-table-msg="' + t + '"]');
+        const confirmText = prompt('This will DELETE all current "' + t + '" data and replace it with ' + rows.length + ' backed-up rows.\n\nType RESTORE (in capitals) to confirm:');
+        if (confirmText !== 'RESTORE') { msgEl.textContent = 'Cancelled.'; msgEl.style.color = 'var(--muted)'; return; }
+        btn.disabled = true; btn.textContent = 'Restoring...';
+        try {
+          const cleanRows = rows.map(function(r){
+            const copy = Object.assign({}, r);
+            delete copy.id; // let the database assign fresh ids to avoid conflicts
+            return copy;
+          });
+          await sb.from(t).delete().neq('id', -999999999);
+          if (cleanRows.length) await sb.from(t).insert(cleanRows);
+          msgEl.textContent = 'Restored ' + cleanRows.length + ' rows successfully!'; msgEl.style.color = 'var(--ok)';
+          btn.textContent = 'Restored';
+          invalidateCache();
+        } catch (err) {
+          msgEl.textContent = 'Restore failed: ' + err.message; msgEl.style.color = 'var(--err)';
+          btn.disabled = false; btn.textContent = 'Restore This Table';
+        }
+      });
+    });
   }
 
   function readExcelFile(file, callback){
@@ -686,6 +795,10 @@
     document.getElementById('navBackup').addEventListener('click', function(){
       closeAllMenus();
       downloadFullBackup();
+    });
+    document.getElementById('navViewBackup').addEventListener('click', function(){
+      closeAllMenus();
+      viewEncryptedBackup();
     });
 
     wireNav('navDashOverview', ['tabAdminBtn', 'subDashboardBtn']);
