@@ -200,9 +200,27 @@
   .entry-grid .rm-cell{width:32px; text-align:center;}
   .entry-grid .rm-cell button{background:none; border:none; color:var(--err); font-size:16px; cursor:pointer; padding:2px 6px;}
   .entry-grid-total{display:flex; justify-content:flex-end; gap:10px; padding:8px 10px; font-weight:800; color:var(--navy-dark); font-size:13px; background:#F4FAF4; border-top:1px solid var(--line);}
+
+  #printArea{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{display:block; position:absolute; left:0; top:0; width:210mm; padding:12mm; box-sizing:border-box; font-family:Arial, sans-serif; color:#000;}
+    .po-header{display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2px solid #000; padding-bottom:10px; margin-bottom:14px;}
+    .po-company-name{font-size:20px; font-weight:800; margin:0 0 4px;}
+    .po-company-detail{font-size:11px; margin:0; color:#333;}
+    .po-title{font-size:16px; font-weight:800; text-align:right;}
+    .po-meta{display:flex; justify-content:space-between; margin-bottom:14px; font-size:12px;}
+    .po-table{width:100%; border-collapse:collapse; font-size:12px; margin-bottom:14px;}
+    .po-table th, .po-table td{border:1px solid #333; padding:6px 8px; text-align:left;}
+    .po-table th{background:#eee;}
+    .po-total-row td{font-weight:800; text-align:right;}
+    .po-footer{font-size:11px; color:#333; margin-top:20px; border-top:1px solid #999; padding-top:10px;}
+  }
 </style>
 </head>
 <body>
+<div id="printArea"></div>
 
 <div id="loginScreen">
   <div class="login-card">
@@ -534,6 +552,47 @@
       '</tr></thead><tbody>' +
       rows.map(r => '<tr>' + r.map(c => '<td>' + c + '</td>').join('') + '</tr>').join('') +
       '</tbody></table></div>';
+  }
+
+  async function printOrderPDF(kind, party, dateStr, note, lineItems, itemsById){
+    const { data: coRows } = await sb.from('company_settings').select('*').limit(1);
+    const co = (coRows && coRows[0]) || {};
+    const title = kind === 'purchase' ? 'PURCHASE ORDER' : 'SALES ORDER';
+    const partyLabel = kind === 'purchase' ? 'Vendor' : 'Customer';
+
+    let grandTotal = 0;
+    const rowsHtml = lineItems.map(function(li, i){
+      const it = itemsById[li.item_id] || {};
+      const price = Number(it.unit_price) || 0;
+      const amt = price * Number(li.ordered_qty || 0);
+      grandTotal += amt;
+      return '<tr><td>' + (i+1) + '</td><td>' + (it.item_name || 'Item') + '</td><td>' + (li.ordered_qty || 0) + '</td><td>' + (it.unit || 'Pcs.') + '</td><td>Rs.' + price.toLocaleString('en-IN') + '</td><td>Rs.' + amt.toLocaleString('en-IN') + '</td></tr>';
+    }).join('');
+
+    const printArea = document.getElementById('printArea');
+    printArea.innerHTML =
+      '<div class="po-header">' +
+        '<div>' +
+          '<div class="po-company-name">' + (co.company_name || 'Your Company') + '</div>' +
+          (co.address ? '<div class="po-company-detail">' + co.address.replace(/\n/g, '<br>') + '</div>' : '') +
+          (co.phone || co.email ? '<div class="po-company-detail">' + [co.phone, co.email].filter(Boolean).join(' &middot; ') + '</div>' : '') +
+          (co.gstin ? '<div class="po-company-detail">GSTIN: ' + co.gstin + '</div>' : '') +
+        '</div>' +
+        '<div class="po-title">' + title + '</div>' +
+      '</div>' +
+      '<div class="po-meta">' +
+        '<div><b>' + partyLabel + ':</b> ' + (party || '-') + '</div>' +
+        '<div><b>Date:</b> ' + dateStr + '</div>' +
+      '</div>' +
+      '<table class="po-table"><thead><tr><th>#</th><th>Item</th><th>Qty</th><th>Unit</th><th>Price</th><th>Amount</th></tr></thead><tbody>' +
+      rowsHtml +
+      '<tr class="po-total-row"><td colspan="5">Grand Total</td><td>Rs.' + grandTotal.toLocaleString('en-IN') + '</td></tr>' +
+      '</tbody></table>' +
+      (note ? '<div><b>Note:</b> ' + note + '</div>' : '') +
+      (co.bank_details ? '<div class="po-footer"><b>Bank Details:</b><br>' + co.bank_details.replace(/\n/g, '<br>') + '</div>' : '') +
+      '<div class="po-footer">This is a computer-generated ' + title.toLowerCase() + ' and does not require a signature.</div>';
+
+    window.print();
   }
 
 
@@ -1337,35 +1396,82 @@
           '<button type="button" class="subtab-btn" id="mstItemGroupBtn">Item Group</button>' +
           '<button type="button" class="subtab-btn" id="mstPartyGroupBtn">Party Group</button>' +
           '<button type="button" class="subtab-btn" id="mstBranchBtn">Branch</button>' +
+          '<button type="button" class="subtab-btn" id="mstCompanyBtn">Company Details</button>' +
         '</div>' +
         '<div id="mstPartyPanel"></div>' +
         '<div id="mstItemGroupPanel" class="hidden"></div>' +
         '<div id="mstPartyGroupPanel" class="hidden"></div>' +
-        '<div id="mstBranchPanel" class="hidden"></div>';
+        '<div id="mstBranchPanel" class="hidden"></div>' +
+        '<div id="mstCompanyPanel" class="hidden"></div>';
 
       const mstPartyBtn = document.getElementById('mstPartyBtn');
       const mstItemGroupBtn = document.getElementById('mstItemGroupBtn');
       const mstPartyGroupBtn = document.getElementById('mstPartyGroupBtn');
       const mstBranchBtn = document.getElementById('mstBranchBtn');
+      const mstCompanyBtn = document.getElementById('mstCompanyBtn');
       const mstPartyPanel = document.getElementById('mstPartyPanel');
       const mstItemGroupPanel = document.getElementById('mstItemGroupPanel');
       const mstPartyGroupPanel = document.getElementById('mstPartyGroupPanel');
       const mstBranchPanel = document.getElementById('mstBranchPanel');
+      const mstCompanyPanel = document.getElementById('mstCompanyPanel');
 
       function activateMst(which){
-        [mstPartyBtn, mstItemGroupBtn, mstPartyGroupBtn, mstBranchBtn].forEach(b => b.classList.remove('active'));
-        [mstPartyPanel, mstItemGroupPanel, mstPartyGroupPanel, mstBranchPanel].forEach(p => p.classList.add('hidden'));
+        [mstPartyBtn, mstItemGroupBtn, mstPartyGroupBtn, mstBranchBtn, mstCompanyBtn].forEach(b => b.classList.remove('active'));
+        [mstPartyPanel, mstItemGroupPanel, mstPartyGroupPanel, mstBranchPanel, mstCompanyPanel].forEach(p => p.classList.add('hidden'));
         if (which === 'party') { mstPartyBtn.classList.add('active'); mstPartyPanel.classList.remove('hidden'); loadPartyMaster(); }
         if (which === 'itemgroup') { mstItemGroupBtn.classList.add('active'); mstItemGroupPanel.classList.remove('hidden'); loadSimpleMaster('item_groups', mstItemGroupPanel, 'Item Group'); }
         if (which === 'partygroup') { mstPartyGroupBtn.classList.add('active'); mstPartyGroupPanel.classList.remove('hidden'); loadSimpleMaster('party_groups', mstPartyGroupPanel, 'Party Group'); }
         if (which === 'branch') { mstBranchBtn.classList.add('active'); mstBranchPanel.classList.remove('hidden'); loadSimpleMaster('branches', mstBranchPanel, 'Branch'); }
+        if (which === 'company') { mstCompanyBtn.classList.add('active'); mstCompanyPanel.classList.remove('hidden'); loadCompanyMaster(); }
       }
       mstPartyBtn.addEventListener('click', function(){ activateMst('party'); });
       mstItemGroupBtn.addEventListener('click', function(){ activateMst('itemgroup'); });
       mstPartyGroupBtn.addEventListener('click', function(){ activateMst('partygroup'); });
       mstBranchBtn.addEventListener('click', function(){ activateMst('branch'); });
+      mstCompanyBtn.addEventListener('click', function(){ activateMst('company'); });
       activateMst('party');
     };
+
+    async function loadCompanyMaster(){
+      const panelEl = document.getElementById('mstCompanyPanel');
+      panelEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+      const { data } = await sb.from('company_settings').select('*').limit(1);
+      const c = (data && data[0]) || {};
+
+      panelEl.innerHTML =
+        '<div class="card" style="padding:14px;">' +
+          '<span class="mini-label">Company Details (used on printed orders)</span>' +
+          '<input type="text" id="coName" placeholder="Company Name" value="' + (c.company_name||'') + '" style="margin-top:8px;">' +
+          '<textarea id="coAddress" placeholder="Address" style="margin-top:8px;">' + (c.address||'') + '</textarea>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<input type="text" id="coPhone" placeholder="Phone" value="' + (c.phone||'') + '">' +
+            '<input type="text" id="coEmail" placeholder="Email" value="' + (c.email||'') + '">' +
+          '</div>' +
+          '<input type="text" id="coGstin" placeholder="GSTIN (optional)" value="' + (c.gstin||'') + '" style="margin-top:8px;">' +
+          '<textarea id="coBank" placeholder="Bank Details (optional, shown on printed orders)" style="margin-top:8px;">' + (c.bank_details||'') + '</textarea>' +
+          '<button type="button" class="add-btn" id="coSaveBtn" style="margin-top:8px;">Save Company Details</button>' +
+          '<div class="import-msg" id="coSaveMsg"></div>' +
+        '</div>';
+
+      document.getElementById('coSaveBtn').addEventListener('click', async function(){
+        const payload = {
+          company_name: document.getElementById('coName').value.trim(),
+          address: document.getElementById('coAddress').value.trim(),
+          phone: document.getElementById('coPhone').value.trim(),
+          email: document.getElementById('coEmail').value.trim(),
+          gstin: document.getElementById('coGstin').value.trim(),
+          bank_details: document.getElementById('coBank').value.trim()
+        };
+        const msgEl = document.getElementById('coSaveMsg');
+        if (c.id) {
+          await sb.from('company_settings').update(payload).eq('id', c.id);
+        } else {
+          await sb.from('company_settings').insert(payload);
+        }
+        invalidateCache('company');
+        msgEl.textContent = 'Saved!'; msgEl.className = 'import-msg ok';
+      });
+    }
 
     async function loadSimpleMaster(table, panelEl, label){
       panelEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
@@ -2393,7 +2499,7 @@
         listSection.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
         const [{ data: orders }, { data: allItems }] = await Promise.all([
           sb.from(table).select('*').order('created_at', { ascending: false }),
-          sb.from('inventory').select('id, item_name')
+          sb.from('inventory').select('id, item_name, unit, unit_price')
         ]);
         const itemsById2 = {};
         (allItems || []).forEach(function(it){ itemsById2[it.id] = it; });
@@ -2518,17 +2624,30 @@
               '</div>';
             }).join('');
 
-            return '<div class="reorder-item priority-' + (groupStatus === 'Completed' ? '' : statusClass) + '" style="' + (groupStatus === 'Completed' ? 'border-left-color:var(--ok);' : '') + '">' +
+            return '<div class="reorder-item priority-' + (groupStatus === 'Completed' ? '' : statusClass) + '" data-groupkey="' + (first.order_group || ('single-' + first.id)) + '" style="' + (groupStatus === 'Completed' ? 'border-left-color:var(--ok);' : '') + '">' +
               '<div class="r-top">' +
                 '<div><div class="r-name">' + (party || 'No name') + '</div><div class="r-sku">' + groupOrders.length + ' item(s) &middot; Order Date: ' + d + ' &middot; Taken by: ' + (first.created_by || 'Unknown') + '</div></div>' +
                 '<span class="priority-badge ' + (groupStatus === 'Completed' ? 'watch' : statusClass) + '" style="' + (groupStatus === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : '') + '">' + groupStatus + '</span>' +
               '</div>' +
               (first.note ? '<div class="reorder-vendor">' + first.note + '</div>' : '') +
+              '<button type="button" class="icon-btn print-order-btn" style="width:100%;margin-bottom:6px;">Print PDF (A4)</button>' +
               itemRowsHtml +
             '</div>';
           }).join('');
 
           wrap.innerHTML = summaryHtml + groupsHtml;
+
+          wrap.querySelectorAll('.print-order-btn').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              const card = btn.closest('.reorder-item');
+              const groupKey = card.getAttribute('data-groupkey');
+              const groupOrders = groups.find(function(g){ return (g[0].order_group || ('single-' + g[0].id)) === groupKey; });
+              const first = groupOrders[0];
+              const party = kind === 'purchase' ? first.vendor : first.customer_name;
+              const d = first.created_at ? new Date(first.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+              printOrderPDF(kind, party, d, first.note, groupOrders, itemsById2);
+            });
+          });
 
           wrap.querySelectorAll('.convert-btn').forEach(function(btn){
             btn.addEventListener('click', async function(){
