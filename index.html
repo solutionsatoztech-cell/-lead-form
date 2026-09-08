@@ -245,6 +245,7 @@
   <div class="menu-dropdown hidden" id="menuAdminDropdown">
     <div class="menu-item" id="navUsers"><span>Users</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navMasters"><span>Masters</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navTasks"><span>Task Checklist</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navBackup"><span>Backup All Data</span><span class="mi-arrow">&#8250;</span></div>
   </div>
 
@@ -319,6 +320,7 @@
 
   <section id="dashSection" class="hidden">
     <div id="myRightsBar"></div>
+    <div id="myTasksSection"></div>
     <div id="myBizSnapshot"></div>
     <div id="dashSummary"></div>
     <div id="dashList"></div>
@@ -336,6 +338,7 @@
       <button type="button" class="subtab-btn" id="subLeadsBtn">All Leads</button>
       <button type="button" class="subtab-btn" id="subUsersBtn">Users</button>
       <button type="button" class="subtab-btn" id="subMastersBtn">Masters</button>
+      <button type="button" class="subtab-btn" id="subTasksBtn">Task Checklist</button>
       <button type="button" class="subtab-btn" id="subInventoryBtn">Inventory</button>
     </div>
 
@@ -345,6 +348,7 @@
     <div id="adminLeadsPanel" class="hidden"></div>
     <div id="adminUsersPanel" class="hidden"></div>
     <div id="adminMastersPanel" class="hidden"></div>
+    <div id="adminTasksPanel" class="hidden"></div>
     <div id="adminInventoryPanel" class="hidden"></div>
   </section>
 
@@ -630,6 +634,7 @@
 
     wireNav('navUsers', ['tabAdminBtn', 'subUsersBtn']);
     wireNav('navMasters', ['tabAdminBtn', 'subMastersBtn']);
+    wireNav('navTasks', ['tabAdminBtn', 'subTasksBtn']);
 
     document.getElementById('navBackup').addEventListener('click', function(){
       closeAllMenus();
@@ -973,6 +978,7 @@
     const subLeadsBtn = document.getElementById('subLeadsBtn');
     const subUsersBtn = document.getElementById('subUsersBtn');
     const subMastersBtn = document.getElementById('subMastersBtn');
+    const subTasksBtn = document.getElementById('subTasksBtn');
     const subInventoryBtn = document.getElementById('subInventoryBtn');
     const adminDashboardPanel = document.getElementById('adminDashboardPanel');
     const adminReportsPanel = document.getElementById('adminReportsPanel');
@@ -980,17 +986,19 @@
     const adminLeadsPanel = document.getElementById('adminLeadsPanel');
     const adminUsersPanel = document.getElementById('adminUsersPanel');
     const adminMastersPanel = document.getElementById('adminMastersPanel');
+    const adminTasksPanel = document.getElementById('adminTasksPanel');
     const adminInventoryPanel = document.getElementById('adminInventoryPanel');
 
     function activateSub(which){
-      [subDashboardBtn, subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subMastersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
-      [adminDashboardPanel, adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminMastersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
+      [subDashboardBtn, subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subMastersBtn, subTasksBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
+      [adminDashboardPanel, adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminMastersPanel, adminTasksPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
       if (which === 'dashboard') { subDashboardBtn.classList.add('active'); adminDashboardPanel.classList.remove('hidden'); loadAdminDashboard(); }
       if (which === 'reports') { subReportsBtn.classList.add('active'); adminReportsPanel.classList.remove('hidden'); loadAdminReports(); }
       if (which === 'reorder') { subReorderBtn.classList.add('active'); adminReorderPanel.classList.remove('hidden'); loadAdminReorder(); }
       if (which === 'leads') { subLeadsBtn.classList.add('active'); adminLeadsPanel.classList.remove('hidden'); loadAdminLeads(); }
       if (which === 'users') { subUsersBtn.classList.add('active'); adminUsersPanel.classList.remove('hidden'); loadAdminUsers(); }
       if (which === 'masters') { subMastersBtn.classList.add('active'); adminMastersPanel.classList.remove('hidden'); loadAdminMasters(); }
+      if (which === 'tasks') { subTasksBtn.classList.add('active'); adminTasksPanel.classList.remove('hidden'); loadAdminTasks(); }
       if (which === 'inventory') { subInventoryBtn.classList.add('active'); adminInventoryPanel.classList.remove('hidden'); loadAdminInventory(); }
     }
     subDashboardBtn.addEventListener('click', function(){ activateSub('dashboard'); });
@@ -999,6 +1007,7 @@
     subLeadsBtn.addEventListener('click', function(){ activateSub('leads'); });
     subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
     subMastersBtn.addEventListener('click', function(){ activateSub('masters'); });
+    subTasksBtn.addEventListener('click', function(){ activateSub('tasks'); });
     subInventoryBtn.addEventListener('click', function(){ activateSub('inventory'); });
 
     function setupAdminSubtabs(){
@@ -1012,6 +1021,7 @@
       subLeadsBtn.classList.toggle('hidden', !canLeads);
       subUsersBtn.classList.toggle('hidden', !canUsers);
       subMastersBtn.classList.toggle('hidden', !isAdmin);
+      subTasksBtn.classList.toggle('hidden', !isAdmin);
       subInventoryBtn.classList.toggle('hidden', !canInventory);
       if (isAdmin) activateSub('dashboard');
       else if (canInventory) activateSub('reorder');
@@ -1152,6 +1162,204 @@
           const id = b.closest('.admin-item').getAttribute('data-id');
           await sb.from('parties').delete().eq('id', id);
           loadPartyMaster();
+        });
+      });
+    }
+
+    // ============ TASK CHECKLIST ============
+    function todayISO(){ return new Date().toISOString().slice(0, 10); }
+    function currentPeriodDueDate(frequency){
+      const now = new Date();
+      if (frequency === 'Daily') return todayISO();
+      if (frequency === 'Monthly') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+      if (frequency === 'HalfYearly') {
+        const half = now.getMonth() < 6 ? 0 : 6;
+        return new Date(now.getFullYear(), half, 1).toISOString().slice(0, 10);
+      }
+      return todayISO();
+    }
+    function daysBetween(d1, d2){
+      return Math.round((new Date(d2) - new Date(d1)) / 86400000);
+    }
+
+    window.loadAdminTasks = function(){
+      adminTasksPanel.innerHTML =
+        '<div class="subtabs">' +
+          '<button type="button" class="subtab-btn active" id="taskAddTabBtn">+ Add Task</button>' +
+          '<button type="button" class="subtab-btn" id="taskListTabBtn">Task List</button>' +
+          '<button type="button" class="subtab-btn" id="taskReportTabBtn">Completion Report</button>' +
+        '</div>' +
+        '<div id="taskAddSection"></div>' +
+        '<div id="taskListSection" class="hidden"></div>' +
+        '<div id="taskReportSection" class="hidden"></div>';
+
+      const taskAddTabBtn = document.getElementById('taskAddTabBtn');
+      const taskListTabBtn = document.getElementById('taskListTabBtn');
+      const taskReportTabBtn = document.getElementById('taskReportTabBtn');
+      const taskAddSection = document.getElementById('taskAddSection');
+      const taskListSection = document.getElementById('taskListSection');
+      const taskReportSection = document.getElementById('taskReportSection');
+
+      function activateTaskSub(which){
+        [taskAddTabBtn, taskListTabBtn, taskReportTabBtn].forEach(b => b.classList.remove('active'));
+        [taskAddSection, taskListSection, taskReportSection].forEach(s => s.classList.add('hidden'));
+        if (which === 'add') { taskAddTabBtn.classList.add('active'); taskAddSection.classList.remove('hidden'); renderTaskAddForm(); }
+        if (which === 'list') { taskListTabBtn.classList.add('active'); taskListSection.classList.remove('hidden'); renderTaskList(); }
+        if (which === 'report') { taskReportTabBtn.classList.add('active'); taskReportSection.classList.remove('hidden'); renderTaskReport(); }
+      }
+      taskAddTabBtn.addEventListener('click', function(){ activateTaskSub('add'); });
+      taskListTabBtn.addEventListener('click', function(){ activateTaskSub('list'); });
+      taskReportTabBtn.addEventListener('click', function(){ activateTaskSub('report'); });
+
+      function renderTaskAddForm(){
+        taskAddSection.innerHTML =
+          '<div class="card" style="padding:14px;">' +
+            '<span class="mini-label">New Task</span>' +
+            '<input type="text" id="tskTitle" placeholder="Task Title" style="margin-top:8px;">' +
+            '<textarea id="tskDesc" placeholder="Description (what exactly needs to be done)" style="margin-top:8px;"></textarea>' +
+            '<div class="row2" style="margin-top:8px;">' +
+              '<select id="tskUser"><option value="">-- Assign To --</option>' + usersListGlobal.map(u => '<option value="' + u.name + '">' + u.name + '</option>').join('') + '</select>' +
+              '<select id="tskFreq"><option value="Daily">Daily</option><option value="Monthly">Monthly</option><option value="HalfYearly">Half-Yearly</option></select>' +
+            '</div>' +
+            '<button type="button" class="add-btn" id="tskSaveBtn" style="margin-top:8px;">+ Add Task</button>' +
+            '<div class="import-msg" id="tskSaveMsg"></div>' +
+          '</div>';
+
+        document.getElementById('tskSaveBtn').addEventListener('click', async function(){
+          const title = document.getElementById('tskTitle').value.trim();
+          const desc = document.getElementById('tskDesc').value.trim();
+          const user = document.getElementById('tskUser').value;
+          const freq = document.getElementById('tskFreq').value;
+          const msgEl = document.getElementById('tskSaveMsg');
+          if (!title) { alert('Enter a task title'); return; }
+          if (!user) { alert('Select a user'); return; }
+          const { error } = await sb.from('tasks').insert({ title: title, description: desc, assigned_to: user, frequency: freq, created_by: currentUser.name });
+          if (error) { msgEl.textContent = error.message; msgEl.className = 'import-msg err'; return; }
+          msgEl.textContent = 'Task added!'; msgEl.className = 'import-msg ok';
+          document.getElementById('tskTitle').value = '';
+          document.getElementById('tskDesc').value = '';
+          setTimeout(function(){ taskListTabBtn.click(); }, 500);
+        });
+      }
+
+      async function renderTaskList(){
+        taskListSection.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+        const { data: allTasks } = await sb.from('tasks').select('*').order('created_at', { ascending: false });
+        if (!allTasks || !allTasks.length) { taskListSection.innerHTML = '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No tasks yet.</p></div>'; return; }
+        taskListSection.innerHTML = allTasks.map(function(t){
+          return '<div class="admin-item" data-id="' + t.id + '"><div class="row"><div>' +
+            '<div class="title">' + t.title + '</div>' +
+            '<div class="sub">' + t.assigned_to + ' &middot; ' + t.frequency + (t.is_active === false ? ' &middot; INACTIVE' : '') + '</div>' +
+            (t.description ? '<div class="sub">' + t.description + '</div>' : '') +
+            '</div><div class="btns"><button type="button" class="icon-btn danger task-del">Delete</button></div></div></div>';
+        }).join('');
+        taskListSection.querySelectorAll('.task-del').forEach(function(b){
+          b.addEventListener('click', async function(){
+            if (!confirm('Delete this task? Its history will also be removed.')) return;
+            const id = b.closest('.admin-item').getAttribute('data-id');
+            await sb.from('tasks').delete().eq('id', id);
+            renderTaskList();
+          });
+        });
+      }
+
+      async function renderTaskReport(){
+        taskReportSection.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+        const [{ data: completions }, { data: allTasks }] = await Promise.all([
+          sb.from('task_completions').select('*').order('due_date', { ascending: false }).limit(200),
+          sb.from('tasks').select('id, title, assigned_to, frequency')
+        ]);
+        const tasksById = {};
+        (allTasks || []).forEach(function(t){ tasksById[t.id] = t; });
+
+        const reportData = (completions || []).map(function(c){
+          const t = tasksById[c.task_id];
+          const delayDays = c.completed_at ? Math.max(daysBetween(c.due_date, c.completed_at.slice(0, 10)), 0) : (daysBetween(c.due_date, todayISO()) > 0 ? daysBetween(c.due_date, todayISO()) : 0);
+          return {
+            Task: t ? t.title : 'Task', User: t ? t.assigned_to : '-', Frequency: t ? t.frequency : '-',
+            'Due Date': c.due_date, 'Completed At': c.completed_at ? c.completed_at.slice(0, 16).replace('T', ' ') : '-',
+            Status: c.status, 'Delay (days)': delayDays
+          };
+        });
+
+        const summaryHtml =
+          '<div class="stat-grid">' +
+            '<div class="stat-box amber"><div class="num">' + reportData.filter(r => r.Status === 'Pending').length + '</div><div class="lbl">Pending</div></div>' +
+            '<div class="stat-box ok"><div class="num">' + reportData.filter(r => r.Status === 'Done').length + '</div><div class="lbl">Done On Time</div></div>' +
+            '<div class="stat-box err"><div class="num">' + reportData.filter(r => r.Status === 'Delayed').length + '</div><div class="lbl">Delayed</div></div>' +
+          '</div>';
+
+        const tableHtmlOut = reportData.length
+          ? tableHtml(['Task', 'User', 'Frequency', 'Due Date', 'Completed At', 'Status', 'Delay (days)'], reportData.map(r => [r.Task, r.User, r.Frequency, r['Due Date'], r['Completed At'], r.Status, r['Delay (days)']]))
+          : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No task activity yet.</p>';
+
+        taskReportSection.innerHTML = summaryHtml +
+          '<div class="card"><div class="table-export-row"><button type="button" class="table-export-btn" id="taskReportExportBtn">Export</button></div>' + tableHtmlOut + '</div>';
+        document.getElementById('taskReportExportBtn').addEventListener('click', function(){ exportToExcel(reportData, 'task_completion_report.xlsx', 'Task Report'); });
+      }
+
+      activateTaskSub('add');
+    };
+
+    // Ensures a Pending completion row exists for each active task assigned
+    // to the given user for the CURRENT due period (today / this month / this half-year).
+    async function ensureDueTaskCompletions(userName){
+      const { data: myTasks } = await sb.from('tasks').select('*').eq('assigned_to', userName).eq('is_active', true);
+      if (!myTasks || !myTasks.length) return;
+      for (const t of myTasks) {
+        const due = currentPeriodDueDate(t.frequency);
+        const { data: existing } = await sb.from('task_completions').select('id').eq('task_id', t.id).eq('due_date', due).limit(1);
+        if (!existing || !existing.length) {
+          await sb.from('task_completions').insert({ task_id: t.id, due_date: due, status: 'Pending' });
+        }
+      }
+    }
+
+    async function loadMyTasks(){
+      const el = document.getElementById('myTasksSection');
+      if (!el) return;
+      el.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading your tasks...</p>';
+
+      await ensureDueTaskCompletions(currentUser.name);
+
+      const { data: myTasks } = await sb.from('tasks').select('id, title, description, frequency').eq('assigned_to', currentUser.name).eq('is_active', true);
+      if (!myTasks || !myTasks.length) { el.innerHTML = ''; return; }
+      const taskIds = myTasks.map(t => t.id);
+      const tasksById = {};
+      myTasks.forEach(function(t){ tasksById[t.id] = t; });
+
+      const { data: pending } = await sb.from('task_completions').select('*').in('task_id', taskIds).eq('status', 'Pending').order('due_date', { ascending: true });
+
+      if (!pending || !pending.length) {
+        el.innerHTML = '<div class="card" style="padding:14px;margin-bottom:14px;"><span class="mini-label">My Tasks</span><p style="text-align:center;color:var(--ok);font-weight:700;margin:8px 0 0;">All caught up! No pending tasks.</p></div>';
+        return;
+      }
+
+      el.innerHTML =
+        '<div class="card" style="padding:14px;margin-bottom:14px;">' +
+          '<span class="mini-label">My Tasks (' + pending.length + ' pending)</span>' +
+          pending.map(function(c){
+            const t = tasksById[c.task_id];
+            const overdue = daysBetween(c.due_date, todayISO()) > 0;
+            return '<div class="lead-card" data-compid="' + c.id + '" style="' + (overdue ? 'border-color:var(--err);' : '') + '">' +
+              '<div class="row"><span class="cname">' + (t ? t.title : 'Task') + '</span><span class="badge ' + (overdue ? '' : 'new') + '" style="' + (overdue ? 'background:#FCE1E1;color:var(--err);' : '') + '">' + (t ? t.frequency : '') + '</span></div>' +
+              (t && t.description ? '<div class="meta">' + t.description + '</div>' : '') +
+              '<div class="meta">Due: ' + c.due_date + (overdue ? ' &middot; <b style="color:var(--err);">Overdue</b>' : '') + '</div>' +
+              '<button type="button" class="task-done-btn" style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:9px;background:var(--ok);color:#fff;font-weight:800;cursor:pointer;">Mark Done</button>' +
+              '</div>';
+          }).join('') +
+        '</div>';
+
+      el.querySelectorAll('.task-done-btn').forEach(function(btn){
+        btn.addEventListener('click', async function(){
+          const card = btn.closest('.lead-card');
+          const compId = card.getAttribute('data-compid');
+          const comp = pending.find(c => String(c.id) === compId);
+          const delayDays = daysBetween(comp.due_date, todayISO());
+          const status = delayDays > 0 ? 'Delayed' : 'Done';
+          btn.disabled = true; btn.textContent = 'Saving...';
+          await sb.from('task_completions').update({ completed_at: new Date().toISOString(), completed_by: currentUser.name, status: status }).eq('id', compId);
+          loadMyTasks();
         });
       });
     }
@@ -2457,6 +2665,7 @@
         (rights.length ? rights.join(' &middot; ') : 'Standard User (Leads only)') + '</div></div>';
     }
     loadMyBizSnapshot();
+    loadMyTasks();
     const newCount = leads.filter(l => l.status === 'New Lead').length;
     dashSummary.innerHTML =
       '<div class="summary-bar">' +
