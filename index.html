@@ -2588,6 +2588,21 @@
         const { error } = await sb.from(table).insert(entries);
         if (error) { msgEl.textContent = error.message; msgEl.className = 'import-msg err'; return; }
         msgEl.textContent = entries.length + ' item(s) saved to order!'; msgEl.className = 'import-msg ok';
+
+        if (party) {
+          const itemsList = rows.map(function(r){
+            const it = itemsById3[r.item_id];
+            return '- ' + (it ? it.item_name : 'Item') + ' x ' + r.qty;
+          }).join('\n');
+          const title = kind === 'purchase' ? 'Purchase Order' : 'Sales Order';
+          const msg = 'Hello ' + party + ',\n\nHere are the details of your ' + title + ':\n' + itemsList +
+            (expDispatch ? ('\n\nExpected Dispatch: ' + expDispatch) : '') +
+            (note ? ('\n\nNote: ' + note) : '');
+          if (confirm('Order saved! Send a WhatsApp summary to ' + party + '?')) {
+            sendPartyWhatsApp(party, msg);
+          }
+        }
+
         ordItemRows.innerHTML = '';
         addOrderItemRow();
         addSection.querySelector('#ordParty').value = '';
