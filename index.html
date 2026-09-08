@@ -1515,7 +1515,7 @@
         }
         return '<div class="admin-item" data-id="' + u.id + '">' +
           '<div class="row"><div><div class="title">' + u.name + '</div>' +
-          '<div class="sub">' + (u.mobile||'') + ' &middot; ' + (u.department||'') + ' &middot; Login: ' + u.login_id + '</div>' +
+          '<div class="sub">' + (u.mobile||'') + ' &middot; ' + (u.department||'') + (u.branch ? (' &middot; Branch: ' + u.branch) : '') + ' &middot; Login: ' + u.login_id + '</div>' +
           '<div class="sub">Rights: ' + (rights.length ? rights.join(', ') : 'None') + '</div></div>' +
           '<div class="btns"><button type="button" class="icon-btn edit-user">Edit</button>' +
           '<button type="button" class="icon-btn danger del-user">Delete</button></div></div>' +
@@ -1554,7 +1554,7 @@
         '</div>' +
         '<div class="row2">' +
           '<div class="field-block"><span class="mini-label">Department</span><input type="text" class="f-dept" placeholder="Department" value="' + (user?.department||'') + '"></div>' +
-          '<div class="field-block"></div>' +
+          '<div class="field-block"><span class="mini-label">Branch</span><input type="text" class="f-branch" placeholder="Branch" value="' + (user?.branch||'') + '"></div>' +
         '</div>' +
         '<div class="row2">' +
           '<div class="field-block"><span class="mini-label">Login ID</span><input type="text" class="f-login" placeholder="Login ID" value="' + (user?.login_id||'') + '"></div>' +
@@ -1574,6 +1574,7 @@
           name: target.querySelector('.f-name').value.trim(),
           mobile: target.querySelector('.f-mobile').value.trim(),
           department: target.querySelector('.f-dept').value.trim(),
+          branch: target.querySelector('.f-branch').value.trim(),
           login_id: target.querySelector('.f-login').value.trim(),
           password: target.querySelector('.f-pass').value.trim(),
           perm_leads: target.querySelector('.f-perm-leads').checked,
