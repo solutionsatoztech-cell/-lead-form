@@ -216,6 +216,7 @@
   <div class="menu-bar" id="menuBar">
     <button type="button" class="menu-btn" id="menuTransBtn">Transactions <span class="menu-arrow">&#9662;</span></button>
     <button type="button" class="menu-btn" id="menuDisplayBtn">Display <span class="menu-arrow">&#9662;</span></button>
+    <button type="button" class="menu-btn hidden" id="menuDashboardsBtn">Dashboard <span class="menu-arrow">&#9662;</span></button>
     <button type="button" class="menu-btn hidden" id="menuAdminBtn">Administration <span class="menu-arrow">&#9662;</span></button>
   </div>
   <div class="menu-dropdown hidden" id="menuTransDropdown">
@@ -233,6 +234,13 @@
     <div class="menu-item" id="navReorder"><span>Reorder</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navAllLeads"><span>All Leads</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navStock"><span>Stock / Items</span><span class="mi-arrow">&#8250;</span></div>
+  </div>
+  <div class="menu-dropdown hidden" id="menuDashboardsDropdown">
+    <div class="menu-item" id="navDashOverview"><span>Overview (All-in-one)</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navDashLeads"><span>Lead Dashboard</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navDashOrders"><span>Order Dashboard</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navDashStock"><span>Stock Dashboard</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navDashReorder"><span>Reorder Dashboard</span><span class="mi-arrow">&#8250;</span></div>
   </div>
   <div class="menu-dropdown hidden" id="menuAdminDropdown">
     <div class="menu-item" id="navUsers"><span>Users</span><span class="mi-arrow">&#8250;</span></div>
@@ -366,6 +374,7 @@
     if (hasAnyAdminPerm) {
       document.getElementById('tabAdminBtn').classList.remove('hidden');
       document.getElementById('menuAdminBtn').classList.remove('hidden');
+      document.getElementById('menuDashboardsBtn').classList.remove('hidden');
     }
     initApp();
     loadDashboard();
@@ -466,13 +475,15 @@
 
     const menuTransBtn = document.getElementById('menuTransBtn');
     const menuDisplayBtn = document.getElementById('menuDisplayBtn');
+    const menuDashboardsBtn = document.getElementById('menuDashboardsBtn');
     const menuAdminBtn = document.getElementById('menuAdminBtn');
     const menuTransDropdown = document.getElementById('menuTransDropdown');
     const menuDisplayDropdown = document.getElementById('menuDisplayDropdown');
+    const menuDashboardsDropdown = document.getElementById('menuDashboardsDropdown');
     const menuAdminDropdown = document.getElementById('menuAdminDropdown');
 
-    const allBtns = [menuTransBtn, menuDisplayBtn, menuAdminBtn];
-    const allDropdowns = [menuTransDropdown, menuDisplayDropdown, menuAdminDropdown];
+    const allBtns = [menuTransBtn, menuDisplayBtn, menuDashboardsBtn, menuAdminBtn];
+    const allDropdowns = [menuTransDropdown, menuDisplayDropdown, menuDashboardsDropdown, menuAdminDropdown];
 
     function closeAllMenus(){
       allBtns.forEach(b => b.classList.remove('open'));
@@ -490,6 +501,7 @@
     }
     menuTransBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuTransBtn, menuTransDropdown); });
     menuDisplayBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuDisplayBtn, menuDisplayDropdown); });
+    menuDashboardsBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuDashboardsBtn, menuDashboardsDropdown); });
     menuAdminBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuAdminBtn, menuAdminDropdown); });
     document.addEventListener('click', closeAllMenus);
 
@@ -527,6 +539,12 @@
     wireNav('navStock', ['tabAdminBtn', 'subInventoryBtn', 'invSubItemsBtn']);
 
     wireNav('navUsers', ['tabAdminBtn', 'subUsersBtn']);
+
+    wireNav('navDashOverview', ['tabAdminBtn', 'subDashboardBtn']);
+    wireNav('navDashLeads', ['tabDashBtn']);
+    wireNav('navDashOrders', ['tabAdminBtn', 'subReportsBtn']);
+    wireNav('navDashStock', ['tabAdminBtn', 'subInventoryBtn', 'invSubItemsBtn']);
+    wireNav('navDashReorder', ['tabAdminBtn', 'subReorderBtn']);
   }
 
   function initApp(){
