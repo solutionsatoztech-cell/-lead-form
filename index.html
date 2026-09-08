@@ -283,6 +283,7 @@
     <div class="menu-item" id="navDashOrders"><span>Order Dashboard</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navDashStock"><span>Stock Dashboard</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navDashReorder"><span>Reorder Dashboard</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navDispatchSchedule"><span>Dispatch Schedule</span><span class="mi-arrow">&#8250;</span></div>
   </div>
   <div class="menu-dropdown hidden" id="menuAdminDropdown">
     <div class="menu-item" id="navUsers"><span>Users</span><span class="mi-arrow">&#8250;</span></div>
@@ -378,6 +379,7 @@
       <button type="button" class="subtab-btn active" id="subDashboardBtn">Dashboard</button>
       <button type="button" class="subtab-btn" id="subReportsBtn">Reports</button>
       <button type="button" class="subtab-btn" id="subReorderBtn">Reorder</button>
+      <button type="button" class="subtab-btn" id="subDispatchBtn">Dispatch Schedule</button>
       <button type="button" class="subtab-btn" id="subLeadsBtn">All Leads</button>
       <button type="button" class="subtab-btn" id="subUsersBtn">Users</button>
       <button type="button" class="subtab-btn" id="subMastersBtn">Masters</button>
@@ -388,6 +390,7 @@
     <div id="adminDashboardPanel"></div>
     <div id="adminReportsPanel" class="hidden"></div>
     <div id="adminReorderPanel" class="hidden"></div>
+    <div id="adminDispatchPanel" class="hidden"></div>
     <div id="adminLeadsPanel" class="hidden"></div>
     <div id="adminUsersPanel" class="hidden"></div>
     <div id="adminMastersPanel" class="hidden"></div>
@@ -891,6 +894,7 @@
     wireNav('navDashOrders', ['tabAdminBtn', 'subReportsBtn']);
     wireNav('navDashStock', ['tabAdminBtn', 'subInventoryBtn', 'invSubItemsBtn']);
     wireNav('navDashReorder', ['tabAdminBtn', 'subReorderBtn']);
+    wireNav('navDispatchSchedule', ['tabAdminBtn', 'subDispatchBtn']);
   }
 
   // ============ TASK CHECKLIST ============
@@ -1355,6 +1359,7 @@
     const subDashboardBtn = document.getElementById('subDashboardBtn');
     const subReportsBtn = document.getElementById('subReportsBtn');
     const subReorderBtn = document.getElementById('subReorderBtn');
+    const subDispatchBtn = document.getElementById('subDispatchBtn');
     const subLeadsBtn = document.getElementById('subLeadsBtn');
     const subUsersBtn = document.getElementById('subUsersBtn');
     const subMastersBtn = document.getElementById('subMastersBtn');
@@ -1363,6 +1368,7 @@
     const adminDashboardPanel = document.getElementById('adminDashboardPanel');
     const adminReportsPanel = document.getElementById('adminReportsPanel');
     const adminReorderPanel = document.getElementById('adminReorderPanel');
+    const adminDispatchPanel = document.getElementById('adminDispatchPanel');
     const adminLeadsPanel = document.getElementById('adminLeadsPanel');
     const adminUsersPanel = document.getElementById('adminUsersPanel');
     const adminMastersPanel = document.getElementById('adminMastersPanel');
@@ -1370,11 +1376,12 @@
     const adminInventoryPanel = document.getElementById('adminInventoryPanel');
 
     function activateSub(which){
-      [subDashboardBtn, subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subMastersBtn, subTasksBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
-      [adminDashboardPanel, adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminMastersPanel, adminTasksPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
+      [subDashboardBtn, subReportsBtn, subReorderBtn, subDispatchBtn, subLeadsBtn, subUsersBtn, subMastersBtn, subTasksBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
+      [adminDashboardPanel, adminReportsPanel, adminReorderPanel, adminDispatchPanel, adminLeadsPanel, adminUsersPanel, adminMastersPanel, adminTasksPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
       if (which === 'dashboard') { subDashboardBtn.classList.add('active'); adminDashboardPanel.classList.remove('hidden'); loadAdminDashboard(); }
       if (which === 'reports') { subReportsBtn.classList.add('active'); adminReportsPanel.classList.remove('hidden'); loadAdminReports(); }
       if (which === 'reorder') { subReorderBtn.classList.add('active'); adminReorderPanel.classList.remove('hidden'); loadAdminReorder(); }
+      if (which === 'dispatch') { subDispatchBtn.classList.add('active'); adminDispatchPanel.classList.remove('hidden'); loadDispatchSchedule(); }
       if (which === 'leads') { subLeadsBtn.classList.add('active'); adminLeadsPanel.classList.remove('hidden'); loadAdminLeads(); }
       if (which === 'users') { subUsersBtn.classList.add('active'); adminUsersPanel.classList.remove('hidden'); loadAdminUsers(); }
       if (which === 'masters') { subMastersBtn.classList.add('active'); adminMastersPanel.classList.remove('hidden'); loadAdminMasters(); }
@@ -1384,6 +1391,7 @@
     subDashboardBtn.addEventListener('click', function(){ activateSub('dashboard'); });
     subReportsBtn.addEventListener('click', function(){ activateSub('reports'); });
     subReorderBtn.addEventListener('click', function(){ activateSub('reorder'); });
+    subDispatchBtn.addEventListener('click', function(){ activateSub('dispatch'); });
     subLeadsBtn.addEventListener('click', function(){ activateSub('leads'); });
     subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
     subMastersBtn.addEventListener('click', function(){ activateSub('masters'); });
@@ -1398,6 +1406,7 @@
       subDashboardBtn.classList.toggle('hidden', !isAdmin);
       subReportsBtn.classList.toggle('hidden', !isAdmin);
       subReorderBtn.classList.toggle('hidden', !canInventory);
+      subDispatchBtn.classList.toggle('hidden', !canInventory);
       subLeadsBtn.classList.toggle('hidden', !canLeads);
       subUsersBtn.classList.toggle('hidden', !canUsers);
       subMastersBtn.classList.toggle('hidden', !isAdmin);
@@ -1407,6 +1416,68 @@
       else if (canInventory) activateSub('reorder');
       else if (canLeads) activateSub('leads');
       else if (canUsers) activateSub('users');
+    }
+
+    async function loadDispatchSchedule(){
+      adminDispatchPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+
+      const [{ data: pOrders }, { data: sOrders }, { data: items }] = await Promise.all([
+        sb.from('purchase_orders').select('*').neq('status', 'Completed').not('expected_dispatch_date', 'is', null),
+        sb.from('sales_orders').select('*').neq('status', 'Completed').not('expected_dispatch_date', 'is', null),
+        sb.from('inventory').select('id, item_name')
+      ]);
+      const itemsById5 = {};
+      (items || []).forEach(function(it){ itemsById5[it.id] = it; });
+
+      const today = todayISO();
+      const allOrders = (pOrders || []).map(o => Object.assign({}, o, { kind: 'purchase' }))
+        .concat((sOrders || []).map(o => Object.assign({}, o, { kind: 'sale' })));
+
+      function bucketOf(dateStr){
+        const diff = daysBetween(today, dateStr);
+        if (diff < 0) return 'Overdue';
+        if (diff === 0) return 'Today';
+        if (diff === 1) return 'Tomorrow';
+        if (diff <= 7) return 'This Week';
+        return 'Later';
+      }
+      const buckets = { 'Overdue': [], 'Today': [], 'Tomorrow': [], 'This Week': [], 'Later': [] };
+      allOrders.forEach(function(o){
+        buckets[bucketOf(o.expected_dispatch_date)].push(o);
+      });
+
+      const summaryHtml =
+        '<div class="stat-grid">' +
+          '<div class="stat-box err"><div class="num">' + buckets['Overdue'].length + '</div><div class="lbl">Overdue</div></div>' +
+          '<div class="stat-box amber"><div class="num">' + buckets['Today'].length + '</div><div class="lbl">Due Today</div></div>' +
+          '<div class="stat-box"><div class="num">' + buckets['Tomorrow'].length + '</div><div class="lbl">Due Tomorrow</div></div>' +
+          '<div class="stat-box ok"><div class="num">' + buckets['This Week'].length + '</div><div class="lbl">This Week</div></div>' +
+        '</div>';
+
+      const exportData = [];
+      const sectionsHtml = ['Overdue', 'Today', 'Tomorrow', 'This Week', 'Later'].map(function(bucketName){
+        const rows = buckets[bucketName];
+        if (!rows.length) return '';
+        const tRows = rows.map(function(o){
+          const it = itemsById5[o.item_id];
+          const fulfilled = Number(o.kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
+          const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
+          const party = o.kind === 'purchase' ? o.vendor : o.customer_name;
+          exportData.push({ When: bucketName, Type: o.kind === 'purchase' ? 'Purchase' : 'Sales', Item: it ? it.item_name : 'Item', Party: party || '-', Pending: pending, 'Expected Date': o.expected_dispatch_date, 'Assigned To': o.assigned_to || '-' });
+          return [o.kind === 'purchase' ? 'Purchase' : 'Sales', it ? it.item_name : 'Item', party || '-', pending, o.expected_dispatch_date, o.assigned_to || '-'];
+        });
+        return '<div class="card"><div class="section-title" style="margin-top:0;color:' + (bucketName === 'Overdue' ? 'var(--err)' : 'var(--navy-dark)') + ';">' + bucketName + '</div>' +
+          tableHtml(['Type', 'Item', 'Party', 'Pending Qty', 'Expected Date', 'Assigned To'], tRows) + '</div>';
+      }).join('');
+
+      adminDispatchPanel.innerHTML =
+        '<div class="dashboard-header"><h2>Dispatch Schedule</h2><p>What needs to go out (or come in) — today, tomorrow, and this week.</p></div>' +
+        summaryHtml +
+        '<div class="table-export-row"><button type="button" class="table-export-btn" id="dispatchExportBtn">Export All</button></div>' +
+        (sectionsHtml || '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No orders have an expected dispatch date set yet.</p></div>');
+
+      const expBtn = document.getElementById('dispatchExportBtn');
+      if (expBtn) expBtn.addEventListener('click', function(){ exportToExcel(exportData, 'dispatch_schedule.xlsx', 'Dispatch Schedule'); });
     }
 
     window.loadAdminMasters = function(){
