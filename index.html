@@ -1066,10 +1066,23 @@
     window.loadAdminReorder = async function(){
       adminReorderPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
-      const [{ data: items }, { data: allTxns }] = await Promise.all([
+      const [{ data: items }, { data: allTxns }, { data: pOrders }, { data: sOrders }] = await Promise.all([
         sb.from('inventory').select('id, item_name, sku_code, item_group, reorder_level, unit_price, supplier'),
-        sb.from('stock_transactions').select('item_id, type, quantity, vendor, created_at')
+        sb.from('stock_transactions').select('item_id, type, quantity, vendor, created_at'),
+        sb.from('purchase_orders').select('item_id, ordered_qty, received_qty, status').neq('status', 'Completed'),
+        sb.from('sales_orders').select('item_id, ordered_qty, delivered_qty, status').neq('status', 'Completed')
       ]);
+
+      const pendingPOQtyMap = {};
+      (pOrders || []).forEach(function(o){
+        const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.received_qty)||0), 0);
+        pendingPOQtyMap[o.item_id] = (pendingPOQtyMap[o.item_id] || 0) + pending;
+      });
+      const pendingSOQtyMap = {};
+      (sOrders || []).forEach(function(o){
+        const pending = Math.max((Number(o.ordered_qty)||0) - (Number(o.delivered_qty)||0), 0);
+        pendingSOQtyMap[o.item_id] = (pendingSOQtyMap[o.item_id] || 0) + pending;
+      });
 
       const stockMap = {};
       const lastPurchaseMap = {};
@@ -1124,15 +1137,21 @@
         const vendor = (lastP && lastP.vendor) || it.supplier || '';
         const priority = x.stock <= 0 ? 'critical' : (x.ratio <= 0.5 ? 'low' : 'watch');
         const priorityLabel = priority === 'critical' ? 'Out of Stock' : (priority === 'low' ? 'Low Stock' : 'Reorder Soon');
+        const pendingPOQty = pendingPOQtyMap[it.id] || 0;
+        const pendingSOQty = pendingSOQtyMap[it.id] || 0;
         return '<div class="reorder-item priority-' + priority + '" data-itemid="' + it.id + '" data-price="' + (it.unit_price||0) + '">' +
           '<div class="r-top">' +
             '<div><div class="r-name">' + it.item_name + '</div><div class="r-sku">' + (it.sku_code || 'No SKU') + (it.item_group ? (' &middot; ' + it.item_group) : '') + '</div></div>' +
             '<span class="priority-badge ' + priority + '">' + priorityLabel + '</span>' +
           '</div>' +
-          '<div class="reorder-metrics">' +
+          '<div class="reorder-metrics" style="flex-wrap:wrap;">' +
             '<div class="reorder-metric"><div class="rm-num">' + x.stock + '</div><div class="rm-lbl">Current Stock</div></div>' +
             '<div class="reorder-metric"><div class="rm-num">' + x.reorderLvl + '</div><div class="rm-lbl">Reorder Level</div></div>' +
             '<div class="reorder-metric"><div class="rm-num">' + suggestedQty + '</div><div class="rm-lbl">Suggest Buy</div></div>' +
+          '</div>' +
+          '<div class="reorder-metrics" style="flex-wrap:wrap;">' +
+            '<div class="reorder-metric"><div class="rm-num">' + pendingPOQty + '</div><div class="rm-lbl">Pending Purchase Order Qty</div></div>' +
+            '<div class="reorder-metric"><div class="rm-num">' + pendingSOQty + '</div><div class="rm-lbl">Pending Sales Order Qty</div></div>' +
           '</div>' +
           '<div class="reorder-vendor">' + (vendor ? ('Vendor: <b>' + vendor + '</b>' + (lastP ? (' &middot; last bought ' + new Date(lastP.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })) : '')) : 'No vendor on record') + '</div>' +
           '<div class="quick-purchase-row">' +
