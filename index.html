@@ -361,6 +361,40 @@
 </div>
 
 <script>
+  // ===== Temporary on-screen error catcher (for debugging on mobile
+  // where DevTools isn't available). Shows any JS error as a red banner
+  // at the bottom of the screen with a Copy button. =====
+  function showOnScreenError(msg){
+    let el = document.getElementById('onScreenErrorBanner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'onScreenErrorBanner';
+      el.style.cssText = 'position:fixed;bottom:0;left:0;right:0;background:#B71C1C;color:#fff;padding:10px 12px;font-size:11.5px;font-family:monospace;z-index:999999;max-height:45vh;overflow:auto;box-shadow:0 -4px 16px rgba(0,0,0,.4);';
+      const header = document.createElement('div');
+      header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-family:Arial, sans-serif;font-weight:800;font-size:13px;';
+      header.innerHTML = '<span>⚠️ Error Log (screenshot this)</span>';
+      const closeBtn = document.createElement('button');
+      closeBtn.textContent = 'Close';
+      closeBtn.style.cssText = 'background:#fff;color:#B71C1C;border:none;border-radius:6px;padding:4px 10px;font-weight:700;font-size:11px;';
+      closeBtn.onclick = function(){ el.remove(); };
+      header.appendChild(closeBtn);
+      el.appendChild(header);
+      document.body.appendChild(el);
+    }
+    const line = document.createElement('div');
+    line.style.cssText = 'border-top:1px solid rgba(255,255,255,.3);padding-top:6px;margin-top:6px;word-break:break-word;';
+    line.textContent = new Date().toLocaleTimeString() + ' — ' + msg;
+    el.appendChild(line);
+  }
+  window.addEventListener('error', function(e){
+    showOnScreenError('JS Error: ' + e.message + ' @ ' + (e.filename ? e.filename.split('/').pop() : '') + ':' + e.lineno);
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    const reason = e.reason;
+    const msg = (reason && reason.message) ? reason.message : (typeof reason === 'string' ? reason : JSON.stringify(reason));
+    showOnScreenError('Promise Error: ' + msg);
+  });
+
   const SUPABASE_URL = "https://wnorbyaeikvusdzesbkt.supabase.co";
   const SUPABASE_KEY = "sb_publishable_l9_ENeEmiv59DJta1I8BGA_b7W7PXWV";
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
