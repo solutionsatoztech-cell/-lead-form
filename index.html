@@ -1677,13 +1677,7 @@
       document.getElementById('statPendingPO').addEventListener('click', function(){
         showStatDetail('Pending Purchase Orders', ['Item', 'Vendor', 'Ordered', 'Received', 'Pending', 'Status'], poData.map(r => [r.Item, r.Vendor || '-', r.Ordered, r.Received, r.Pending, r.Status]), poData, 'pending_purchase_orders.xlsx');
       });
-      document.getElementById('statPendingPOQty').addEventListener('click', function(){
-        showStatDetail('Pending Purchase Orders', ['Item', 'Vendor', 'Ordered', 'Received', 'Pending', 'Status'], poData.map(r => [r.Item, r.Vendor || '-', r.Ordered, r.Received, r.Pending, r.Status]), poData, 'pending_purchase_orders.xlsx');
-      });
       document.getElementById('statPendingSO').addEventListener('click', function(){
-        showStatDetail('Pending Sales Orders', ['Item', 'Customer', 'Ordered', 'Delivered', 'Pending', 'Status'], soData.map(r => [r.Item, r.Customer || '-', r.Ordered, r.Delivered, r.Pending, r.Status]), soData, 'pending_sales_orders.xlsx');
-      });
-      document.getElementById('statPendingSOQty').addEventListener('click', function(){
         showStatDetail('Pending Sales Orders', ['Item', 'Customer', 'Ordered', 'Delivered', 'Pending', 'Status'], soData.map(r => [r.Item, r.Customer || '-', r.Ordered, r.Delivered, r.Pending, r.Status]), soData, 'pending_sales_orders.xlsx');
       });
     };
