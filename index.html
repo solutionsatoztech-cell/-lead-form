@@ -1546,32 +1546,57 @@
           '<span class="mini-label">New ' + (kind === 'purchase' ? 'Purchase Order (to Vendor)' : 'Sales Order (from Customer)') + '</span>' +
           '<input type="text" id="ordParty" list="ordPartyList" placeholder="' + (kind === 'purchase' ? 'Vendor Name (pick from list or type new)' : 'Customer Name (pick from list or type new)') + '" style="margin-top:8px;">' +
           '<datalist id="ordPartyList">' + partyNamesList.map(n => '<option value="' + n + '">').join('') + '</datalist>' +
-          '<div class="row2" style="margin-top:8px;">' +
-            '<select id="ordItemSelect">' +
-              '<option value="">-- Select Item --</option>' +
-              (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('') +
-            '</select>' +
-            '<input type="number" id="ordQty" placeholder="Ordered Quantity">' +
-          '</div>' +
-          '<input type="text" id="ordNote" placeholder="Optional note" style="margin-top:8px;">' +
+          '<div id="ordItemRows" style="margin-top:8px;"></div>' +
+          '<button type="button" class="icon-btn" id="ordAddRowBtn" style="width:100%;margin-top:4px;">+ Add Another Item</button>' +
+          '<input type="text" id="ordNote" placeholder="Optional note (applies to whole order)" style="margin-top:8px;">' +
           '<button type="button" class="add-btn" id="ordSaveBtn" style="margin-top:8px;">Save Order</button>' +
           '<div class="import-msg" id="ordSaveMsg"></div>' +
         '</div>';
 
+      const ordItemRows = document.getElementById('ordItemRows');
+      const itemOptionsHtml = '<option value="">-- Select Item --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
+
+      function addOrderItemRow(){
+        const row = document.createElement('div');
+        row.className = 'row2 ord-item-row';
+        row.style.marginBottom = '8px';
+        row.innerHTML =
+          '<select class="ord-item-select">' + itemOptionsHtml + '</select>' +
+          '<input type="number" class="ord-item-qty" placeholder="Quantity">' +
+          '<button type="button" class="icon-btn danger ord-remove-row" style="flex:0 0 auto;">&times;</button>';
+        ordItemRows.appendChild(row);
+        row.querySelector('.ord-remove-row').addEventListener('click', function(){
+          if (ordItemRows.children.length > 1) row.remove();
+        });
+      }
+      addOrderItemRow();
+      document.getElementById('ordAddRowBtn').addEventListener('click', addOrderItemRow);
+
       document.getElementById('ordSaveBtn').addEventListener('click', async function(){
-        const itemId = document.getElementById('ordItemSelect').value;
-        const qty = Number(document.getElementById('ordQty').value);
         const party = document.getElementById('ordParty').value.trim();
         const note = document.getElementById('ordNote').value.trim();
         const msgEl = document.getElementById('ordSaveMsg');
-        if (!itemId) { alert('Select an item'); return; }
-        if (!qty || qty <= 0) { alert('Enter a valid ordered quantity'); return; }
-        const entry = { item_id: itemId, ordered_qty: qty, note: note, created_by: currentUser.name, status: 'Open' };
-        if (kind === 'purchase') entry.vendor = party; else entry.customer_name = party;
-        const { error } = await sb.from(table).insert(entry);
+
+        const rows = Array.from(ordItemRows.querySelectorAll('.ord-item-row')).map(function(row){
+          return {
+            item_id: row.querySelector('.ord-item-select').value,
+            qty: Number(row.querySelector('.ord-item-qty').value)
+          };
+        }).filter(function(r){ return r.item_id && r.qty > 0; });
+
+        if (!rows.length) { alert('Add at least one item with a valid quantity'); return; }
+
+        const entries = rows.map(function(r){
+          const entry = { item_id: r.item_id, ordered_qty: r.qty, note: note, created_by: currentUser.name, status: 'Open' };
+          if (kind === 'purchase') entry.vendor = party; else entry.customer_name = party;
+          return entry;
+        });
+
+        const { error } = await sb.from(table).insert(entries);
         if (error) { msgEl.textContent = error.message; msgEl.className = 'import-msg err'; return; }
-        msgEl.textContent = 'Order saved!'; msgEl.className = 'import-msg ok';
-        document.getElementById('ordQty').value = '';
+        msgEl.textContent = entries.length + ' item(s) saved to order!'; msgEl.className = 'import-msg ok';
+        ordItemRows.innerHTML = '';
+        addOrderItemRow();
         document.getElementById('ordParty').value = '';
         document.getElementById('ordNote').value = '';
         setTimeout(function(){ listTabBtn.click(); }, 600);
@@ -1757,13 +1782,9 @@
           '<span class="mini-label">Add ' + (type === 'purchase' ? 'Purchase' : 'Sale') + ' Entry</span>' +
           vendorFieldHtml +
           partyDatalistHtml +
-          '<div class="row2" style="margin-top:8px;">' +
-            '<select id="ledgerItemSelect"><option value="">-- Select Item --</option>' +
-            (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('') +
-            '</select>' +
-            '<input type="number" id="ledgerQty" placeholder="Quantity">' +
-          '</div>' +
-          '<input type="text" id="ledgerNote" placeholder="Optional note" style="margin-top:8px;">' +
+          '<div id="ledgerItemRows" style="margin-top:8px;"></div>' +
+          '<button type="button" class="icon-btn" id="ledgerAddRowBtn" style="width:100%;margin-top:4px;">+ Add Another Item</button>' +
+          '<input type="text" id="ledgerNote" placeholder="Optional note (applies to whole entry)" style="margin-top:8px;">' +
           '<button type="button" class="add-btn" id="ledgerSaveBtn" style="margin-top:8px;">Save Entry</button>' +
         '</div>';
 
@@ -1828,20 +1849,49 @@
         });
       });
 
+      const ledgerItemRows = document.getElementById('ledgerItemRows');
+      const ledgerItemOptionsHtml = '<option value="">-- Select Item --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
+
+      function addLedgerItemRow(){
+        const row = document.createElement('div');
+        row.className = 'row2 ledger-item-row';
+        row.style.marginBottom = '8px';
+        row.innerHTML =
+          '<select class="ledger-item-select">' + ledgerItemOptionsHtml + '</select>' +
+          '<input type="number" class="ledger-item-qty" placeholder="Quantity">' +
+          '<button type="button" class="icon-btn danger ledger-remove-row" style="flex:0 0 auto;">&times;</button>';
+        ledgerItemRows.appendChild(row);
+        row.querySelector('.ledger-remove-row').addEventListener('click', function(){
+          if (ledgerItemRows.children.length > 1) row.remove();
+        });
+      }
+      addLedgerItemRow();
+      document.getElementById('ledgerAddRowBtn').addEventListener('click', addLedgerItemRow);
+
       document.getElementById('ledgerSaveBtn').addEventListener('click', async function(){
-        const itemId = document.getElementById('ledgerItemSelect').value;
-        const qty = Number(document.getElementById('ledgerQty').value);
         const note = document.getElementById('ledgerNote').value.trim();
         const vendorInput = document.getElementById('ledgerVendor');
         const vendorVal = vendorInput ? vendorInput.value.trim() : '';
         const customerInput = document.getElementById('ledgerCustomer');
         const customerVal = customerInput ? customerInput.value.trim() : '';
-        if (!itemId) { alert('Select an item'); return; }
-        if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
-        const entry = { item_id: itemId, type: type, quantity: qty, note: note };
-        if (type === 'purchase') entry.vendor = vendorVal || (itemsById[itemId] ? itemsById[itemId].supplier : '') || '';
-        if (type === 'sale') entry.customer_name = customerVal;
-        await sb.from('stock_transactions').insert(entry);
+
+        const rows = Array.from(ledgerItemRows.querySelectorAll('.ledger-item-row')).map(function(row){
+          return {
+            item_id: row.querySelector('.ledger-item-select').value,
+            qty: Number(row.querySelector('.ledger-item-qty').value)
+          };
+        }).filter(function(r){ return r.item_id && r.qty > 0; });
+
+        if (!rows.length) { alert('Add at least one item with a valid quantity'); return; }
+
+        const entries = rows.map(function(r){
+          const entry = { item_id: r.item_id, type: type, quantity: r.qty, note: note };
+          if (type === 'purchase') entry.vendor = vendorVal || (itemsById[r.item_id] ? itemsById[r.item_id].supplier : '') || '';
+          if (type === 'sale') entry.customer_name = customerVal;
+          return entry;
+        });
+
+        await sb.from('stock_transactions').insert(entries);
         loadInventoryLedger(type);
       });
     }
