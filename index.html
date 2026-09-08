@@ -2153,137 +2153,172 @@
         const itemsById2 = {};
         (allItems || []).forEach(function(it){ itemsById2[it.id] = it; });
 
-        const openCount = (orders || []).filter(o => o.status !== 'Completed').length;
-        const totalPending = (orders || []).reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(kind === 'purchase' ? o.received_qty : o.delivered_qty)||0), 0), 0);
-
-        const summaryHtml =
-          '<div class="stat-grid">' +
-            '<div class="stat-box amber"><div class="num">' + openCount + '</div><div class="lbl">Open / Partial Orders</div></div>' +
-            '<div class="stat-box err"><div class="num">' + totalPending + '</div><div class="lbl">Total Pending Qty</div></div>' +
-          '</div>' +
+        const topBarHtml =
           '<div class="excel-row">' +
             '<button type="button" class="excel-btn" id="exportOrdersBtn-' + kind + '">Export to Excel</button>' +
             '<label class="excel-btn import">Import from Excel<input type="file" id="importOrdersFile-' + kind + '" accept=".xlsx,.xls,.csv"></label>' +
           '</div>' +
-          '<div class="import-msg" id="importOrdersMsg-' + kind + '"></div>';
+          '<div class="import-msg" id="importOrdersMsg-' + kind + '"></div>' +
+          '<div class="card" style="padding:14px;">' +
+            '<span class="mini-label">Filter by Date</span>' +
+            '<div class="row2" style="margin-top:8px;">' +
+              '<input type="date" id="ordDateFrom-' + kind + '">' +
+              '<input type="date" id="ordDateTo-' + kind + '">' +
+            '</div>' +
+            '<div class="row2" style="margin-top:8px;">' +
+              '<button type="button" class="icon-btn" id="ordFilterBtn-' + kind + '" style="flex:1;">Apply Filter</button>' +
+              '<button type="button" class="icon-btn" id="ordClearFilterBtn-' + kind + '" style="flex:1;">Clear</button>' +
+            '</div>' +
+          '</div>' +
+          '<div id="ordListWrap-' + kind + '"></div>';
 
-        setTimeout(function(){
-          const impFile = document.getElementById('importOrdersFile-' + kind);
-          if (impFile) impFile.addEventListener('change', function(e){
-            const file = e.target.files[0];
-            if (!file) return;
-            const msgEl = document.getElementById('importOrdersMsg-' + kind);
-            msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
-            readExcelFile(file, async function(rows){
-              const itemsByName = {};
-              (allItems || []).forEach(function(it){ itemsByName[(it.item_name||'').toLowerCase().trim()] = it.id; });
-              const cleanRows = rows.map(function(r){
-                const itemName = (r.Item || r.item_name || r['Item Name'] || '').toString().trim();
-                const itemId = itemsByName[itemName.toLowerCase()];
-                const partyVal = r.Party || r.Vendor || r.vendor || r['Customer Name'] || r.customer_name || '';
-                const entry = {
-                  item_id: itemId,
-                  ordered_qty: Number(r.Ordered || r.ordered_qty || r['Ordered Quantity']) || 0,
-                  note: r.Note || r.note || '',
-                  created_by: currentUser.name,
-                  status: 'Open'
-                };
-                if (kind === 'purchase') entry.vendor = partyVal; else entry.customer_name = partyVal;
-                return entry;
-              }).filter(function(r){ return r.item_id && r.ordered_qty > 0; });
-              if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check columns: Item (must match existing item name), Ordered, Party, Note'; msgEl.className = 'import-msg err'; return; }
-              const { error: impErr } = await sb.from(table).insert(cleanRows);
-              if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
-              msgEl.textContent = cleanRows.length + ' orders imported!'; msgEl.className = 'import-msg ok';
-              setTimeout(renderOrderList, 800);
-            });
-          });
-        }, 0);
+        listSection.innerHTML = topBarHtml;
 
-        setTimeout(function(){
-          const expBtn = document.getElementById('exportOrdersBtn-' + kind);
-          if (expBtn) expBtn.addEventListener('click', function(){
-            const exportData = (orders || []).map(function(o){
-              const it = itemsById2[o.item_id];
-              const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
-              const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
-              return {
-                Item: it ? it.item_name : 'Item',
-                Party: kind === 'purchase' ? (o.vendor||'') : (o.customer_name||''),
-                Ordered: o.ordered_qty, Fulfilled: fulfilled, Pending: pending,
-                Status: o.status, 'Order Date': o.created_at, 'Dispatch Date': o.dispatch_date || '',
-                'Taken By': o.created_by || '', Note: o.note || ''
+        document.getElementById('importOrdersFile-' + kind).addEventListener('change', function(e){
+          const file = e.target.files[0];
+          if (!file) return;
+          const msgEl = document.getElementById('importOrdersMsg-' + kind);
+          msgEl.textContent = 'Importing...'; msgEl.className = 'import-msg';
+          readExcelFile(file, async function(rows){
+            const itemsByName = {};
+            (allItems || []).forEach(function(it){ itemsByName[(it.item_name||'').toLowerCase().trim()] = it.id; });
+            const cleanRows = rows.map(function(r){
+              const itemName = (r.Item || r.item_name || r['Item Name'] || '').toString().trim();
+              const itemId = itemsByName[itemName.toLowerCase()];
+              const partyVal = r.Party || r.Vendor || r.vendor || r['Customer Name'] || r.customer_name || '';
+              const entry = {
+                item_id: itemId,
+                ordered_qty: Number(r.Ordered || r.ordered_qty || r['Ordered Quantity']) || 0,
+                note: r.Note || r.note || '',
+                created_by: currentUser.name,
+                status: 'Open'
               };
-            });
-            exportToExcel(exportData, (kind === 'purchase' ? 'purchase_orders.xlsx' : 'sales_orders.xlsx'), 'Orders');
-          });
-        }, 0);
-
-        if (!orders || !orders.length) {
-          listSection.innerHTML = summaryHtml + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No orders yet.</p></div>';
-          return;
-        }
-
-        const itemsHtml = orders.map(function(o){
-          const it = itemsById2[o.item_id];
-          const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
-          const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
-          const party = kind === 'purchase' ? o.vendor : o.customer_name;
-          const d = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-          const dispatchTxt = o.dispatch_date
-            ? ('Dispatched: ' + new Date(o.dispatch_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }))
-            : 'Not dispatched yet';
-          const statusClass = o.status === 'Completed' ? 'ok' : (o.status === 'Partial' ? 'watch' : 'low');
-          return '<div class="reorder-item priority-' + (o.status === 'Completed' ? '' : statusClass) + '" data-orderid="' + o.id + '" style="' + (o.status === 'Completed' ? 'border-left-color:var(--ok);' : '') + '">' +
-            '<div class="r-top">' +
-              '<div><div class="r-name">' + (it ? it.item_name : 'Item') + '</div><div class="r-sku">' + (party || 'No name') + ' &middot; Order Date: ' + d + '</div></div>' +
-              '<span class="priority-badge ' + (o.status === 'Completed' ? 'watch' : statusClass) + '" style="' + (o.status === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : '') + '">' + o.status + '</span>' +
-            '</div>' +
-            '<div class="reorder-metrics">' +
-              '<div class="reorder-metric"><div class="rm-num">' + o.ordered_qty + '</div><div class="rm-lbl">Ordered</div></div>' +
-              '<div class="reorder-metric"><div class="rm-num">' + fulfilled + '</div><div class="rm-lbl">' + (kind === 'purchase' ? 'Received' : 'Delivered') + '</div></div>' +
-              '<div class="reorder-metric"><div class="rm-num">' + pending + '</div><div class="rm-lbl">Pending</div></div>' +
-            '</div>' +
-            '<div class="reorder-vendor">Taken by: <b>' + (o.created_by || 'Unknown') + '</b> &middot; ' + dispatchTxt + '</div>' +
-            (o.note ? '<div class="reorder-vendor">' + o.note + '</div>' : '') +
-            (pending > 0 ?
-              '<div class="quick-purchase-row">' +
-                '<input type="number" class="convert-qty" placeholder="Qty ' + (kind === 'purchase' ? 'received' : 'delivered') + ' now" value="' + pending + '">' +
-                '<button type="button" class="convert-btn">Convert to ' + (kind === 'purchase' ? 'Purchase' : 'Sale') + '</button>' +
-              '</div>'
-              : '<div class="reorder-vendor" style="color:var(--ok);font-weight:700;">Fully completed</div>') +
-            '<div class="lead-msg"></div>' +
-          '</div>';
-        }).join('');
-
-        listSection.innerHTML = summaryHtml + itemsHtml;
-
-        listSection.querySelectorAll('.convert-btn').forEach(function(btn){
-          btn.addEventListener('click', async function(){
-            const card = btn.closest('.reorder-item');
-            const orderId = card.getAttribute('data-orderid');
-            const order = orders.find(o => String(o.id) === orderId);
-            const qtyNow = Number(card.querySelector('.convert-qty').value);
-            const msgEl = card.querySelector('.lead-msg');
-            if (!qtyNow || qtyNow <= 0) { alert('Enter a valid quantity'); return; }
-            btn.disabled = true; btn.textContent = 'Saving...';
-
-            const txnType = kind === 'purchase' ? 'purchase' : 'sale';
-            const txnEntry = { item_id: order.item_id, type: txnType, quantity: qtyNow, note: 'From order #' + order.id };
-            if (kind === 'purchase') txnEntry.vendor = order.vendor;
-            await sb.from('stock_transactions').insert(txnEntry);
-
-            const newFulfilled = (Number(kind === 'purchase' ? order.received_qty : order.delivered_qty) || 0) + qtyNow;
-            const newStatus = newFulfilled >= Number(order.ordered_qty) ? 'Completed' : 'Partial';
-            const updatePayload = { status: newStatus };
-            if (kind === 'purchase') updatePayload.received_qty = newFulfilled; else updatePayload.delivered_qty = newFulfilled;
-            if (!order.dispatch_date) updatePayload.dispatch_date = new Date().toISOString();
-            await sb.from(table).update(updatePayload).eq('id', orderId);
-
-            msgEl.textContent = 'Converted successfully!'; msgEl.className = 'lead-msg ok';
+              if (kind === 'purchase') entry.vendor = partyVal; else entry.customer_name = partyVal;
+              return entry;
+            }).filter(function(r){ return r.item_id && r.ordered_qty > 0; });
+            if (!cleanRows.length) { msgEl.textContent = 'No valid rows found. Check columns: Item (must match existing item name), Ordered, Party, Note'; msgEl.className = 'import-msg err'; return; }
+            const { error: impErr } = await sb.from(table).insert(cleanRows);
+            if (impErr) { msgEl.textContent = impErr.message; msgEl.className = 'import-msg err'; return; }
+            msgEl.textContent = cleanRows.length + ' orders imported!'; msgEl.className = 'import-msg ok';
             setTimeout(renderOrderList, 800);
           });
         });
+
+        let currentExportOrders = orders || [];
+
+        function renderOrderCards(filteredOrders){
+          currentExportOrders = filteredOrders;
+          const wrap = document.getElementById('ordListWrap-' + kind);
+          const openCount = filteredOrders.filter(o => o.status !== 'Completed').length;
+          const totalPending = filteredOrders.reduce((s, o) => s + Math.max((Number(o.ordered_qty)||0) - (Number(kind === 'purchase' ? o.received_qty : o.delivered_qty)||0), 0), 0);
+          const summaryHtml =
+            '<div class="stat-grid">' +
+              '<div class="stat-box amber"><div class="num">' + openCount + '</div><div class="lbl">Open / Partial Orders</div></div>' +
+              '<div class="stat-box err"><div class="num">' + totalPending + '</div><div class="lbl">Total Pending Qty</div></div>' +
+            '</div>';
+
+          if (!filteredOrders.length) {
+            wrap.innerHTML = summaryHtml + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No orders in this range.</p></div>';
+            return;
+          }
+
+          const itemsHtml = filteredOrders.map(function(o){
+            const it = itemsById2[o.item_id];
+            const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
+            const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
+            const party = kind === 'purchase' ? o.vendor : o.customer_name;
+            const d = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+            const dispatchTxt = o.dispatch_date
+              ? ('Dispatched: ' + new Date(o.dispatch_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }))
+              : 'Not dispatched yet';
+            const statusClass = o.status === 'Completed' ? 'ok' : (o.status === 'Partial' ? 'watch' : 'low');
+            return '<div class="reorder-item priority-' + (o.status === 'Completed' ? '' : statusClass) + '" data-orderid="' + o.id + '" style="' + (o.status === 'Completed' ? 'border-left-color:var(--ok);' : '') + '">' +
+              '<div class="r-top">' +
+                '<div><div class="r-name">' + (it ? it.item_name : 'Item') + '</div><div class="r-sku">' + (party || 'No name') + ' &middot; Order Date: ' + d + '</div></div>' +
+                '<span class="priority-badge ' + (o.status === 'Completed' ? 'watch' : statusClass) + '" style="' + (o.status === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : '') + '">' + o.status + '</span>' +
+              '</div>' +
+              '<div class="reorder-metrics">' +
+                '<div class="reorder-metric"><div class="rm-num">' + o.ordered_qty + '</div><div class="rm-lbl">Ordered</div></div>' +
+                '<div class="reorder-metric"><div class="rm-num">' + fulfilled + '</div><div class="rm-lbl">' + (kind === 'purchase' ? 'Received' : 'Delivered') + '</div></div>' +
+                '<div class="reorder-metric"><div class="rm-num">' + pending + '</div><div class="rm-lbl">Pending</div></div>' +
+              '</div>' +
+              '<div class="reorder-vendor">Taken by: <b>' + (o.created_by || 'Unknown') + '</b> &middot; ' + dispatchTxt + '</div>' +
+              (o.note ? '<div class="reorder-vendor">' + o.note + '</div>' : '') +
+              (pending > 0 ?
+                '<div class="quick-purchase-row">' +
+                  '<input type="number" class="convert-qty" placeholder="Qty ' + (kind === 'purchase' ? 'received' : 'delivered') + ' now" value="' + pending + '">' +
+                  '<button type="button" class="convert-btn">Convert to ' + (kind === 'purchase' ? 'Purchase' : 'Sale') + '</button>' +
+                '</div>'
+                : '<div class="reorder-vendor" style="color:var(--ok);font-weight:700;">Fully completed</div>') +
+              '<div class="lead-msg"></div>' +
+            '</div>';
+          }).join('');
+
+          wrap.innerHTML = summaryHtml + itemsHtml;
+
+          wrap.querySelectorAll('.convert-btn').forEach(function(btn){
+            btn.addEventListener('click', async function(){
+              const card = btn.closest('.reorder-item');
+              const orderId = card.getAttribute('data-orderid');
+              const order = orders.find(o => String(o.id) === orderId);
+              const qtyNow = Number(card.querySelector('.convert-qty').value);
+              const msgEl = card.querySelector('.lead-msg');
+              if (!qtyNow || qtyNow <= 0) { alert('Enter a valid quantity'); return; }
+              btn.disabled = true; btn.textContent = 'Saving...';
+
+              const txnType = kind === 'purchase' ? 'purchase' : 'sale';
+              const txnEntry = { item_id: order.item_id, type: txnType, quantity: qtyNow, note: 'From order #' + order.id };
+              if (kind === 'purchase') txnEntry.vendor = order.vendor;
+              await sb.from('stock_transactions').insert(txnEntry);
+
+              const newFulfilled = (Number(kind === 'purchase' ? order.received_qty : order.delivered_qty) || 0) + qtyNow;
+              const newStatus = newFulfilled >= Number(order.ordered_qty) ? 'Completed' : 'Partial';
+              const updatePayload = { status: newStatus };
+              if (kind === 'purchase') updatePayload.received_qty = newFulfilled; else updatePayload.delivered_qty = newFulfilled;
+              if (!order.dispatch_date) updatePayload.dispatch_date = new Date().toISOString();
+              await sb.from(table).update(updatePayload).eq('id', orderId);
+
+              msgEl.textContent = 'Converted successfully!'; msgEl.className = 'lead-msg ok';
+              setTimeout(renderOrderList, 800);
+            });
+          });
+        }
+
+        document.getElementById('ordFilterBtn-' + kind).addEventListener('click', function(){
+          const fromVal = document.getElementById('ordDateFrom-' + kind).value;
+          const toVal = document.getElementById('ordDateTo-' + kind).value;
+          const filtered = (orders || []).filter(function(o){
+            if (!o.created_at) return false;
+            const d = o.created_at.slice(0, 10);
+            if (fromVal && d < fromVal) return false;
+            if (toVal && d > toVal) return false;
+            return true;
+          });
+          renderOrderCards(filtered);
+        });
+        document.getElementById('ordClearFilterBtn-' + kind).addEventListener('click', function(){
+          document.getElementById('ordDateFrom-' + kind).value = '';
+          document.getElementById('ordDateTo-' + kind).value = '';
+          renderOrderCards(orders || []);
+        });
+
+        document.getElementById('exportOrdersBtn-' + kind).addEventListener('click', function(){
+          const exportData = currentExportOrders.map(function(o){
+            const it = itemsById2[o.item_id];
+            const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
+            const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
+            return {
+              Item: it ? it.item_name : 'Item',
+              Party: kind === 'purchase' ? (o.vendor||'') : (o.customer_name||''),
+              Ordered: o.ordered_qty, Fulfilled: fulfilled, Pending: pending,
+              Status: o.status, 'Order Date': o.created_at, 'Dispatch Date': o.dispatch_date || '',
+              'Taken By': o.created_by || '', Note: o.note || ''
+            };
+          });
+          exportToExcel(exportData, (kind === 'purchase' ? 'purchase_orders.xlsx' : 'sales_orders.xlsx'), 'Orders');
+        });
+
+        renderOrderCards(orders || []);
       }
 
       renderOrderList();
@@ -2347,16 +2382,75 @@
           '</div>';
       }).join('') : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No ' + type + ' entries yet.</p>';
 
+      const filterBarHtml =
+        '<div class="card" style="padding:14px;">' +
+          '<span class="mini-label">Filter by Date</span>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<input type="date" id="ledgerDateFrom-' + type + '">' +
+            '<input type="date" id="ledgerDateTo-' + type + '">' +
+          '</div>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<button type="button" class="icon-btn" id="ledgerFilterBtn-' + type + '" style="flex:1;">Apply Filter</button>' +
+            '<button type="button" class="icon-btn" id="ledgerClearFilterBtn-' + type + '" style="flex:1;">Clear</button>' +
+          '</div>' +
+        '</div>';
+
       panelEl.innerHTML =
         '<div class="excel-row">' +
           '<button type="button" class="excel-btn" id="exportLedgerBtn-' + type + '">Export to Excel</button>' +
           '<label class="excel-btn import">Import from Excel<input type="file" id="importLedgerFile-' + type + '" accept=".xlsx,.xls,.csv"></label>' +
         '</div>' +
         '<div class="import-msg" id="importLedgerMsg-' + type + '"></div>' +
-        addFormHtml + summaryHtml + '<div class="card"><div class="section-title" style="margin-top:0;">' + (type === 'purchase' ? 'Purchase' : 'Sales') + ' History</div>' + listHtml + '</div>';
+        addFormHtml + filterBarHtml +
+        '<div id="ledgerHistoryWrap-' + type + '">' + summaryHtml + '<div class="card"><div class="section-title" style="margin-top:0;">' + (type === 'purchase' ? 'Purchase' : 'Sales') + ' History</div>' + listHtml + '</div></div>';
+
+      let currentExportData = txns || [];
+
+      function renderFilteredHistory(filteredTxns){
+        currentExportData = filteredTxns;
+        const fTotalQty = filteredTxns.reduce((s, t) => s + (Number(t.quantity)||0), 0);
+        const fTotalValue = filteredTxns.reduce((s, t) => {
+          const it = itemsById[t.item_id];
+          return s + (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
+        }, 0);
+        const fSummaryHtml =
+          '<div class="stat-grid">' +
+            '<div class="stat-box ' + (type === 'purchase' ? 'ok' : 'err') + '"><div class="num">' + fTotalQty + '</div><div class="lbl">Total Qty (' + (type === 'purchase' ? 'Purchased' : 'Sold') + ')</div></div>' +
+            '<div class="stat-box"><div class="num">Rs.' + fTotalValue.toLocaleString('en-IN') + '</div><div class="lbl">Total Value</div></div>' +
+          '</div>';
+        const fListHtml = filteredTxns.length ? filteredTxns.map(function(t){
+          const it = itemsById[t.item_id];
+          const d = t.created_at ? new Date(t.created_at).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+          const val = (Number(t.quantity)||0) * (it ? (Number(it.unit_price)||0) : 0);
+          const vendorTxt = (type === 'purchase' && (t.vendor || (it && it.supplier))) ? (' &middot; from ' + (t.vendor || it.supplier)) : (type === 'sale' && t.customer_name ? (' &middot; to ' + t.customer_name) : '');
+          return '<div class="activity-item" style="border-left-color:' + (type === 'purchase' ? 'var(--ok)' : 'var(--err)') + ';">' +
+            '<div class="who">' + (it ? it.item_name : 'Item') + ' &middot; ' + t.quantity + ' units &middot; Rs.' + val.toLocaleString('en-IN') + vendorTxt + '</div>' +
+            '<div class="when">' + d + (t.note ? (' &middot; ' + t.note) : '') + '</div>' +
+            '</div>';
+        }).join('') : '<p style="color:#7C8B99;text-align:center;margin:8px 0;">No ' + type + ' entries in this range.</p>';
+        document.getElementById('ledgerHistoryWrap-' + type).innerHTML = fSummaryHtml + '<div class="card"><div class="section-title" style="margin-top:0;">' + (type === 'purchase' ? 'Purchase' : 'Sales') + ' History</div>' + fListHtml + '</div>';
+      }
+
+      document.getElementById('ledgerFilterBtn-' + type).addEventListener('click', function(){
+        const fromVal = document.getElementById('ledgerDateFrom-' + type).value;
+        const toVal = document.getElementById('ledgerDateTo-' + type).value;
+        const filtered = (txns || []).filter(function(t){
+          if (!t.created_at) return false;
+          const d = t.created_at.slice(0, 10);
+          if (fromVal && d < fromVal) return false;
+          if (toVal && d > toVal) return false;
+          return true;
+        });
+        renderFilteredHistory(filtered);
+      });
+      document.getElementById('ledgerClearFilterBtn-' + type).addEventListener('click', function(){
+        document.getElementById('ledgerDateFrom-' + type).value = '';
+        document.getElementById('ledgerDateTo-' + type).value = '';
+        renderFilteredHistory(txns || []);
+      });
 
       document.getElementById('exportLedgerBtn-' + type).addEventListener('click', function(){
-        const exportData = (txns || []).map(function(t){
+        const exportData = currentExportData.map(function(t){
           const it = itemsById[t.item_id];
           return {
             Item: it ? it.item_name : 'Item', Quantity: t.quantity,
