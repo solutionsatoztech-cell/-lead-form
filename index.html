@@ -380,6 +380,11 @@
     initApp();
     loadDashboard();
     setupMenuBar();
+    if (user.role === 'admin') {
+      navTo(['tabAdminBtn', 'subDashboardBtn']);
+    } else {
+      navTo(['tabDashBtn']);
+    }
   }
 
   async function doLogin(){
@@ -514,6 +519,35 @@
     });
   }
 
+  let navToken = 0;
+  function navTo(ids){
+    const myToken = ++navToken;
+    let i = 0;
+    function next(){
+      if (myToken !== navToken) return;
+      if (i >= ids.length) return;
+      const id = ids[i];
+      let attempts = 0;
+      function tryClick(){
+        if (myToken !== navToken) return;
+        const el = document.getElementById(id);
+        if (el) {
+          el.click();
+          i++;
+          setTimeout(next, 40);
+        } else if (attempts < 60) {
+          attempts++;
+          setTimeout(tryClick, 50);
+        } else {
+          i++;
+          next();
+        }
+      }
+      tryClick();
+    }
+    next();
+  }
+
   let menuBarWired = false;
   function setupMenuBar(){
     if (menuBarWired) return;
@@ -550,35 +584,6 @@
     menuDashboardsBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuDashboardsBtn, menuDashboardsDropdown); });
     menuAdminBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuAdminBtn, menuAdminDropdown); });
     document.addEventListener('click', closeAllMenus);
-
-    let navToken = 0;
-    function navTo(ids){
-      const myToken = ++navToken;
-      let i = 0;
-      function next(){
-        if (myToken !== navToken) return;
-        if (i >= ids.length) return;
-        const id = ids[i];
-        let attempts = 0;
-        function tryClick(){
-          if (myToken !== navToken) return;
-          const el = document.getElementById(id);
-          if (el) {
-            el.click();
-            i++;
-            setTimeout(next, 40);
-          } else if (attempts < 60) {
-            attempts++;
-            setTimeout(tryClick, 50);
-          } else {
-            i++;
-            next();
-          }
-        }
-        tryClick();
-      }
-      next();
-    }
 
     function wireNav(elId, chain){
       document.getElementById(elId).addEventListener('click', function(){
