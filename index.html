@@ -1278,6 +1278,26 @@
       return num;
     }
     let waStage = 0, custLink = '', userLink = '';
+
+    // Looks up a phone number for a party name (checks Masters > Party first,
+    // then falls back to Leads for customer names). Opens a pre-filled WhatsApp
+    // chat if found. Note: WhatsApp links cannot attach files automatically —
+    // the person needs to attach the printed PDF manually inside the chat.
+    async function sendPartyWhatsApp(partyName, message){
+      if (!partyName) { alert('No vendor/customer name on this order.'); return; }
+      let phone = '';
+      const { data: pMatch } = await sb.from('parties').select('phone').ilike('name', partyName).limit(1);
+      if (pMatch && pMatch[0] && pMatch[0].phone) phone = pMatch[0].phone;
+      if (!phone) {
+        const { data: lMatch } = await sb.from('leads').select('phone').ilike('customer_name', partyName).limit(1);
+        if (lMatch && lMatch[0] && lMatch[0].phone) phone = lMatch[0].phone;
+      }
+      if (!phone) {
+        alert('No phone number found for "' + partyName + '". Add them under Administration → Masters → Party with a phone number, then try again.');
+        return;
+      }
+      window.open('https://wa.me/' + toWaNumber(phone) + '?text=' + encodeURIComponent(message), '_blank');
+    }
     waBtn.addEventListener('click', function(){
       setTimeout(function(){
         if (waStage === 0 && userLink) {
@@ -2400,6 +2420,10 @@
             '<div class="entry-grid-total"><span>Total:</span><span id="ordGrandTotal">Rs.0</span></div>' +
           '</div>' +
           '<button type="button" class="icon-btn" id="ordAddRowBtn" style="width:100%;margin-top:8px;">+ Add Another Item</button>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<div class="field-block"><span class="mini-label">Expected Dispatch Date</span><input type="date" id="ordExpDispatch"></div>' +
+            '<div class="field-block"><span class="mini-label">Assigned To</span><select id="ordAssignedTo"><option value="">-- Select --</option>' + usersListGlobal.map(u => '<option value="' + u.name + '">' + u.name + '</option>').join('') + '</select></div>' +
+          '</div>' +
           '<input type="text" id="ordNote" placeholder="Optional note (applies to whole order)" style="margin-top:8px;">' +
           '<button type="button" class="add-btn" id="ordSaveBtn" style="margin-top:8px;">Save Order</button>' +
           '<div class="import-msg" id="ordSaveMsg"></div>' +
@@ -2414,7 +2438,7 @@
       function recalcGrandTotal(){
         let total = 0;
         ordItemRows.querySelectorAll('tr').forEach(function(row){
-          const amt = Number(row.querySelector('.ord-amt').textContent.replace(/[^0-9.]/g, '')) || 0;
+          const amt = Number(row.querySelector('.ord-amt').getAttribute('data-raw')) || 0;
           total += amt;
         });
         ordGrandTotal.textContent = 'Rs.' + total.toLocaleString('en-IN');
@@ -2426,7 +2450,9 @@
         const priceInput = row.querySelector('.ord-item-price');
         const price = Number(priceInput.value) || 0;
         const amt = qty * price;
-        row.querySelector('.ord-amt').textContent = 'Rs.' + amt.toLocaleString('en-IN');
+        const amtEl = row.querySelector('.ord-amt');
+        amtEl.setAttribute('data-raw', amt);
+        amtEl.textContent = 'Rs.' + amt.toLocaleString('en-IN');
         recalcGrandTotal();
       }
 
@@ -2439,7 +2465,7 @@
           '<td><input type="number" class="ord-item-qty" placeholder="0"></td>' +
           '<td><span class="ord-unit">-</span></td>' +
           '<td><input type="number" class="ord-item-price" placeholder="0"></td>' +
-          '<td class="amt-cell ord-amt">Rs.0</td>' +
+          '<td class="amt-cell ord-amt" data-raw="0">Rs.0</td>' +
           '<td class="rm-cell"><button type="button" class="ord-remove-row">&times;</button></td>';
         ordItemRows.appendChild(row);
 
@@ -2478,9 +2504,12 @@
 
         if (!rows.length) { alert('Add at least one item with a valid quantity'); return; }
 
+        const expDispatch = addSection.querySelector('#ordExpDispatch').value || null;
+        const assignedTo = addSection.querySelector('#ordAssignedTo').value || null;
+
         const groupId = 'ORD-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         const entries = rows.map(function(r){
-          const entry = { item_id: r.item_id, ordered_qty: r.qty, note: note, created_by: currentUser.name, status: 'Open', order_group: groupId };
+          const entry = { item_id: r.item_id, ordered_qty: r.qty, note: note, created_by: currentUser.name, status: 'Open', order_group: groupId, expected_dispatch_date: expDispatch, assigned_to: assignedTo };
           if (kind === 'purchase') entry.vendor = party; else entry.customer_name = party;
           return entry;
         });
@@ -2602,7 +2631,7 @@
               const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
               const dispatchTxt = o.dispatch_date
                 ? ('Dispatched: ' + new Date(o.dispatch_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }))
-                : 'Not dispatched yet';
+                : (o.expected_dispatch_date ? ('Expected: ' + new Date(o.expected_dispatch_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })) : 'Not dispatched yet');
               return '<div class="order-line-item" data-orderid="' + o.id + '" style="border-top:1px solid var(--line);padding:10px 0;">' +
                 '<div class="r-top" style="margin-bottom:6px;">' +
                   '<div class="r-name" style="font-size:13.5px;">' + (it ? it.item_name : 'Item') + '</div>' +
@@ -2613,7 +2642,7 @@
                   '<div class="reorder-metric"><div class="rm-num">' + fulfilled + '</div><div class="rm-lbl">' + (kind === 'purchase' ? 'Received' : 'Delivered') + '</div></div>' +
                   '<div class="reorder-metric"><div class="rm-num">' + pending + '</div><div class="rm-lbl">Pending</div></div>' +
                 '</div>' +
-                '<div class="reorder-vendor" style="font-size:11.5px;">' + dispatchTxt + '</div>' +
+                '<div class="reorder-vendor" style="font-size:11.5px;">Order #' + o.id + ' &middot; ' + dispatchTxt + (o.assigned_to ? (' &middot; Assigned: ' + o.assigned_to) : '') + '</div>' +
                 (pending > 0 ?
                   '<div class="quick-purchase-row">' +
                     '<input type="number" class="convert-qty" placeholder="Qty ' + (kind === 'purchase' ? 'received' : 'delivered') + ' now" value="' + pending + '">' +
@@ -2630,7 +2659,10 @@
                 '<span class="priority-badge ' + (groupStatus === 'Completed' ? 'watch' : statusClass) + '" style="' + (groupStatus === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : '') + '">' + groupStatus + '</span>' +
               '</div>' +
               (first.note ? '<div class="reorder-vendor">' + first.note + '</div>' : '') +
-              '<button type="button" class="icon-btn print-order-btn" style="width:100%;margin-bottom:6px;">Print PDF (A4)</button>' +
+              '<div class="row2" style="margin-bottom:6px;">' +
+                '<button type="button" class="icon-btn print-order-btn" style="flex:1;">Print PDF (A4)</button>' +
+                '<button type="button" class="icon-btn order-wa-btn" style="flex:1;color:var(--wa);border-color:#B7E5C6;">WhatsApp</button>' +
+              '</div>' +
               itemRowsHtml +
             '</div>';
           }).join('');
@@ -2649,6 +2681,24 @@
             });
           });
 
+          wrap.querySelectorAll('.order-wa-btn').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              const card = btn.closest('.reorder-item');
+              const groupKey = card.getAttribute('data-groupkey');
+              const groupOrders = groups.find(function(g){ return (g[0].order_group || ('single-' + g[0].id)) === groupKey; });
+              const first = groupOrders[0];
+              const party = kind === 'purchase' ? first.vendor : first.customer_name;
+              const itemsList = groupOrders.map(function(o){
+                const it = itemsById2[o.item_id];
+                return '- ' + (it ? it.item_name : 'Item') + ' x ' + o.ordered_qty;
+              }).join('\n');
+              const title = kind === 'purchase' ? 'Purchase Order' : 'Sales Order';
+              const msg = 'Hello ' + (party || '') + ',\n\nHere are the details of your ' + title + ' (#' + first.id + '):\n' + itemsList + '\n\nI have also generated a PDF copy — attaching it to this chat now.';
+              alert('WhatsApp chat will open with a message. Please also attach the PDF (use "Print PDF" first to save/download it) inside the WhatsApp chat manually — WhatsApp links cannot attach files automatically.');
+              sendPartyWhatsApp(party, msg);
+            });
+          });
+
           wrap.querySelectorAll('.convert-btn').forEach(function(btn){
             btn.addEventListener('click', async function(){
               const card = btn.closest('.order-line-item');
@@ -2660,7 +2710,8 @@
               btn.disabled = true; btn.textContent = 'Saving...';
 
               const txnType = kind === 'purchase' ? 'purchase' : 'sale';
-              const txnEntry = { item_id: order.item_id, type: txnType, quantity: qtyNow, note: 'From order #' + order.id };
+              const txnEntry = { item_id: order.item_id, type: txnType, quantity: qtyNow, note: 'From order #' + order.id, order_ref: order.id };
+              if (kind === 'sale') txnEntry.customer_name = order.customer_name;
               if (kind === 'purchase') txnEntry.vendor = order.vendor;
               await sb.from('stock_transactions').insert(txnEntry);
 
@@ -2893,7 +2944,7 @@
       function recalcLedgerTotal(){
         let total = 0;
         ledgerItemRows.querySelectorAll('tr').forEach(function(row){
-          const amt = Number(row.querySelector('.ledger-amt').textContent.replace(/[^0-9.]/g, '')) || 0;
+          const amt = Number(row.querySelector('.ledger-amt').getAttribute('data-raw')) || 0;
           total += amt;
         });
         ledgerGrandTotal.textContent = 'Rs.' + total.toLocaleString('en-IN');
@@ -2901,7 +2952,10 @@
       function recalcLedgerRow(row){
         const qty = Number(row.querySelector('.ledger-item-qty').value) || 0;
         const price = Number(row.querySelector('.ledger-item-price').value) || 0;
-        row.querySelector('.ledger-amt').textContent = 'Rs.' + (qty * price).toLocaleString('en-IN');
+        const amt = qty * price;
+        const amtEl = row.querySelector('.ledger-amt');
+        amtEl.setAttribute('data-raw', amt);
+        amtEl.textContent = 'Rs.' + amt.toLocaleString('en-IN');
         recalcLedgerTotal();
       }
 
@@ -2914,7 +2968,7 @@
           '<td><input type="number" class="ledger-item-qty" placeholder="0"></td>' +
           '<td><span class="ledger-unit">-</span></td>' +
           '<td><input type="number" class="ledger-item-price" placeholder="0"></td>' +
-          '<td class="amt-cell ledger-amt">Rs.0</td>' +
+          '<td class="amt-cell ledger-amt" data-raw="0">Rs.0</td>' +
           '<td class="rm-cell"><button type="button" class="ledger-remove-row">&times;</button></td>';
         ledgerItemRows.appendChild(row);
 
@@ -2963,6 +3017,18 @@
         });
 
         await sb.from('stock_transactions').insert(entries);
+
+        const party = type === 'purchase' ? vendorVal : customerVal;
+        if (party) {
+          const itemsList = rows.map(function(r){
+            const it = itemsById[r.item_id];
+            return '- ' + (it ? it.item_name : 'Item') + ' x ' + r.qty;
+          }).join('\n');
+          const msg = 'Hello ' + party + ',\n\nHere is a summary of the ' + (type === 'purchase' ? 'purchase' : 'sale') + ':\n' + itemsList;
+          if (confirm('Entry saved! Send a WhatsApp summary to ' + party + '?')) {
+            sendPartyWhatsApp(party, msg);
+          }
+        }
         loadInventoryLedger(type);
       });
     }
