@@ -244,6 +244,7 @@
   </div>
   <div class="menu-dropdown hidden" id="menuAdminDropdown">
     <div class="menu-item" id="navUsers"><span>Users</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navBackup"><span>Backup All Data</span><span class="mi-arrow">&#8250;</span></div>
   </div>
 
   <div class="tabs hidden" id="mainTabs">
@@ -453,6 +454,51 @@
     XLSX.writeFile(wb, filename);
   }
 
+  async function downloadFullBackup(){
+    const btn = document.getElementById('navBackup');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span>Preparing backup...</span>';
+    try {
+      await loadXLSXLib();
+      const [
+        { data: leads }, { data: users }, { data: inventory },
+        { data: stockTxns }, { data: purchaseOrders }, { data: salesOrders },
+        { data: steps }, { data: leadLog }
+      ] = await Promise.all([
+        sb.from('leads').select('*'),
+        sb.from('users').select('*'),
+        sb.from('inventory').select('*'),
+        sb.from('stock_transactions').select('*'),
+        sb.from('purchase_orders').select('*'),
+        sb.from('sales_orders').select('*'),
+        sb.from('steps').select('*'),
+        sb.from('lead_log').select('*')
+      ]);
+
+      const wb = XLSX.utils.book_new();
+      function addSheet(name, data){
+        const rows = (data && data.length) ? data : [{ note: 'No data' }];
+        const ws = XLSX.utils.json_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, name.substring(0, 31));
+      }
+      addSheet('Leads', leads);
+      addSheet('Users', users);
+      addSheet('Inventory', inventory);
+      addSheet('Stock Transactions', stockTxns);
+      addSheet('Purchase Orders', purchaseOrders);
+      addSheet('Sales Orders', salesOrders);
+      addSheet('Steps', steps);
+      addSheet('Lead Log', leadLog);
+
+      const today = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, 'rpgh_full_backup_' + today + '.xlsx');
+    } catch (err) {
+      alert('Backup failed: ' + err.message);
+    } finally {
+      btn.innerHTML = originalText;
+    }
+  }
+
   function readExcelFile(file, callback){
     loadXLSXLib().then(function(){
       const reader = new FileReader();
@@ -539,6 +585,11 @@
     wireNav('navStock', ['tabAdminBtn', 'subInventoryBtn', 'invSubItemsBtn']);
 
     wireNav('navUsers', ['tabAdminBtn', 'subUsersBtn']);
+
+    document.getElementById('navBackup').addEventListener('click', function(){
+      closeAllMenus();
+      downloadFullBackup();
+    });
 
     wireNav('navDashOverview', ['tabAdminBtn', 'subDashboardBtn']);
     wireNav('navDashLeads', ['tabDashBtn']);
