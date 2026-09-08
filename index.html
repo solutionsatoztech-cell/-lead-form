@@ -1574,6 +1574,7 @@
       const totalLeads = (leads || []).length;
       const newLeadsList = (leads || []).filter(l => l.status === 'New Lead');
       const newLeads = newLeadsList.length;
+      const converted = (leads || []).filter(l => l.status === 'Converted').length;
 
       const stockMap = {};
       (allTxns || []).forEach(function(t){
@@ -1610,20 +1611,22 @@
       const poTableHtml = poData.length ? tableHtml(['Item', 'Vendor', 'Ordered', 'Received', 'Pending', 'Status'], poData.map(r => [r.Item, r.Vendor || '-', r.Ordered, r.Received, r.Pending, r.Status])) : '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">No pending purchase orders.</p>';
       const soTableHtml = soData.length ? tableHtml(['Item', 'Customer', 'Ordered', 'Delivered', 'Pending', 'Status'], soData.map(r => [r.Item, r.Customer || '-', r.Ordered, r.Delivered, r.Pending, r.Status])) : '<p style="color:#7C8B99;text-align:center;margin:8px 0;font-size:12.5px;">No pending sales orders.</p>';
 
+      const summaryTableHtml =
+        '<div class="table-wrap"><table class="data-table"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>' +
+          '<tr class="dash-metric-row" id="statNewLeads" style="cursor:pointer;"><td>New Leads</td><td>' + newLeads + '</td></tr>' +
+          '<tr class="dash-metric-row" id="statTotalLeads" style="cursor:pointer;"><td>Total Leads</td><td>' + totalLeads + '</td></tr>' +
+          '<tr><td>Converted</td><td>' + converted + '</td></tr>' +
+          '<tr class="dash-metric-row" id="statLowStock" style="cursor:pointer;"><td>Low Stock Items</td><td>' + lowStockItems.length + '</td></tr>' +
+          '<tr class="dash-metric-row" id="statStockValue" style="cursor:pointer;"><td>Current Stock Value</td><td>Rs.' + totalStockValue.toLocaleString('en-IN') + '</td></tr>' +
+          '<tr class="dash-metric-row" id="statPendingPO" style="cursor:pointer;"><td>Pending Purchase Orders</td><td>' + pendingPOs.length + '</td></tr>' +
+          '<tr><td>Pending Purchase Qty</td><td>' + totalPendingPOQty + '</td></tr>' +
+          '<tr class="dash-metric-row" id="statPendingSO" style="cursor:pointer;"><td>Pending Sales Orders</td><td>' + pendingSOs.length + '</td></tr>' +
+          '<tr><td>Pending Sales Qty</td><td>' + totalPendingSOQty + '</td></tr>' +
+        '</tbody></table></div>';
+
       adminDashboardPanel.innerHTML =
-        '<div class="dashboard-header"><h2>Business Dashboard</h2><p>One-page overview of Leads, Inventory, Reorder and Orders. Tap any box for details.</p></div>' +
-        '<div class="stat-grid">' +
-          '<div class="stat-box amber" id="statNewLeads" style="cursor:pointer;"><div class="num">' + newLeads + '</div><div class="lbl">New Leads</div></div>' +
-          '<div class="stat-box" id="statTotalLeads" style="cursor:pointer;"><div class="num">' + totalLeads + '</div><div class="lbl">Total Leads</div></div>' +
-          '<div class="stat-box err" id="statLowStock" style="cursor:pointer;"><div class="num">' + lowStockItems.length + '</div><div class="lbl">Low Stock Items</div></div>' +
-          '<div class="stat-box ok" id="statStockValue" style="cursor:pointer;"><div class="num">Rs.' + totalStockValue.toLocaleString('en-IN') + '</div><div class="lbl">Stock Value</div></div>' +
-        '</div>' +
-        '<div class="stat-grid">' +
-          '<div class="stat-box amber" id="statPendingPO" style="cursor:pointer;"><div class="num">' + pendingPOs.length + '</div><div class="lbl">Pending Purchase Orders</div></div>' +
-          '<div class="stat-box" id="statPendingPOQty" style="cursor:pointer;"><div class="num">' + totalPendingPOQty + '</div><div class="lbl">Pending Purchase Qty</div></div>' +
-          '<div class="stat-box amber" id="statPendingSO" style="cursor:pointer;"><div class="num">' + pendingSOs.length + '</div><div class="lbl">Pending Sales Orders</div></div>' +
-          '<div class="stat-box" id="statPendingSOQty" style="cursor:pointer;"><div class="num">' + totalPendingSOQty + '</div><div class="lbl">Pending Sales Qty</div></div>' +
-        '</div>' +
+        '<div class="dashboard-header"><h2>Business Dashboard</h2><p>One-page overview of Leads, Inventory, Reorder and Orders. Tap a row for details.</p></div>' +
+        '<div class="card">' + summaryTableHtml + '</div>' +
         '<div id="dashStatDetail"></div>' +
         '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Reorder Alerts</div><div class="btns"><button type="button" class="icon-btn" id="dashExpReorder">Export</button><button type="button" class="icon-btn" id="dashGoReorder">View All</button></div></div>' + reorderTableHtml + '</div>' +
         '<div class="card"><div class="row" style="margin-bottom:8px;"><div class="section-title" style="margin:0;">Pending Purchase Orders</div><div class="btns"><button type="button" class="icon-btn" id="dashExpPO">Export</button><button type="button" class="icon-btn" id="dashGoInvPO">View All</button></div></div>' + poTableHtml + '</div>' +
@@ -1740,7 +1743,7 @@
         return;
       }
 
-      const itemsHtml = needsReorder.map(function(x){
+      const reorderRows = needsReorder.map(function(x){
         const it = x.it;
         const suggestedQty = Math.max(x.reorderLvl * 2 - x.stock, x.reorderLvl - x.stock, 1);
         const lastP = lastPurchaseMap[it.id];
@@ -1749,45 +1752,55 @@
         const priorityLabel = priority === 'critical' ? 'Out of Stock' : (priority === 'low' ? 'Low Stock' : 'Reorder Soon');
         const pendingPOQty = pendingPOQtyMap[it.id] || 0;
         const pendingSOQty = pendingSOQtyMap[it.id] || 0;
-        return '<div class="reorder-item priority-' + priority + '" data-itemid="' + it.id + '" data-price="' + (it.unit_price||0) + '">' +
-          '<div class="r-top">' +
-            '<div><div class="r-name">' + it.item_name + '</div><div class="r-sku">' + (it.sku_code || 'No SKU') + (it.item_group ? (' &middot; ' + it.item_group) : '') + '</div></div>' +
-            '<span class="priority-badge ' + priority + '">' + priorityLabel + '</span>' +
+        return { it: it, stock: x.stock, reorderLvl: x.reorderLvl, suggestedQty: suggestedQty, vendor: vendor, priorityLabel: priorityLabel, pendingPOQty: pendingPOQty, pendingSOQty: pendingSOQty, lastP: lastP };
+      });
+
+      const exportData = reorderRows.map(r => ({
+        Item: r.it.item_name, SKU: r.it.sku_code || '', Group: r.it.item_group || '', Priority: r.priorityLabel,
+        Stock: r.stock, 'Reorder Level': r.reorderLvl, 'Suggested Buy': r.suggestedQty,
+        'Pending PO Qty': r.pendingPOQty, 'Pending SO Qty': r.pendingSOQty, Vendor: r.vendor
+      }));
+
+      const tableRows = reorderRows.map(function(r){
+        return [r.it.item_name, r.it.sku_code || '-', r.priorityLabel, r.stock, r.reorderLvl, r.suggestedQty, r.pendingPOQty, r.pendingSOQty, r.vendor || '-'];
+      });
+
+      adminReorderPanel.innerHTML = headerHtml +
+        '<div class="card">' +
+          '<div class="table-export-row"><button type="button" class="table-export-btn" id="reorderExportBtn">Export</button></div>' +
+          tableHtml(['Item', 'SKU', 'Priority', 'Stock', 'Reorder Level', 'Suggest Buy', 'Pending PO', 'Pending SO', 'Vendor'], tableRows) +
+        '</div>' +
+        '<div class="card" style="padding:14px;">' +
+          '<span class="mini-label">Log a Purchase</span>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<select id="reorderLogItem"><option value="">-- Select Item --</option>' + reorderRows.map(r => '<option value="' + r.it.id + '" data-vendor="' + (r.vendor||'') + '" data-qty="' + r.suggestedQty + '">' + r.it.item_name + '</option>').join('') + '</select>' +
+            '<input type="number" id="reorderLogQty" placeholder="Quantity">' +
           '</div>' +
-          '<div class="reorder-metrics" style="flex-wrap:wrap;">' +
-            '<div class="reorder-metric"><div class="rm-num">' + x.stock + '</div><div class="rm-lbl">Current Stock</div></div>' +
-            '<div class="reorder-metric"><div class="rm-num">' + x.reorderLvl + '</div><div class="rm-lbl">Reorder Level</div></div>' +
-            '<div class="reorder-metric"><div class="rm-num">' + suggestedQty + '</div><div class="rm-lbl">Suggest Buy</div></div>' +
-          '</div>' +
-          '<div class="reorder-metrics" style="flex-wrap:wrap;">' +
-            '<div class="reorder-metric"><div class="rm-num">' + pendingPOQty + '</div><div class="rm-lbl">Pending Purchase Order Qty</div></div>' +
-            '<div class="reorder-metric"><div class="rm-num">' + pendingSOQty + '</div><div class="rm-lbl">Pending Sales Order Qty</div></div>' +
-          '</div>' +
-          '<div class="reorder-vendor">' + (vendor ? ('Vendor: <b>' + vendor + '</b>' + (lastP ? (' &middot; last bought ' + new Date(lastP.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })) : '')) : 'No vendor on record') + '</div>' +
-          '<div class="quick-purchase-row">' +
-            '<input type="number" class="quick-qty" placeholder="Qty" value="' + suggestedQty + '">' +
-            '<input type="text" class="quick-vendor" placeholder="Vendor" value="' + vendor + '">' +
-            '<button type="button" class="quick-log-btn">Log Purchase</button>' +
-          '</div>' +
-          '<div class="lead-msg"></div>' +
+          '<input type="text" id="reorderLogVendor" placeholder="Vendor" style="margin-top:8px;">' +
+          '<button type="button" class="add-btn" id="reorderLogBtn" style="margin-top:8px;">Log Purchase</button>' +
+          '<div class="import-msg" id="reorderLogMsg"></div>' +
         '</div>';
-      }).join('');
 
-      adminReorderPanel.innerHTML = headerHtml + itemsHtml;
+      document.getElementById('reorderExportBtn').addEventListener('click', function(){
+        exportToExcel(exportData, 'reorder_dashboard.xlsx', 'Reorder');
+      });
 
-      adminReorderPanel.querySelectorAll('.quick-log-btn').forEach(function(btn){
-        btn.addEventListener('click', async function(){
-          const card = btn.closest('.reorder-item');
-          const itemId = card.getAttribute('data-itemid');
-          const qty = Number(card.querySelector('.quick-qty').value);
-          const vendor = card.querySelector('.quick-vendor').value.trim();
-          const msgEl = card.querySelector('.lead-msg');
-          if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
-          btn.disabled = true; btn.textContent = 'Saving...';
-          await sb.from('stock_transactions').insert({ item_id: itemId, type: 'purchase', quantity: qty, vendor: vendor });
-          msgEl.textContent = 'Purchase logged!'; msgEl.className = 'lead-msg ok';
-          setTimeout(function(){ loadAdminReorder(); }, 800);
-        });
+      const reorderLogItemSelect = document.getElementById('reorderLogItem');
+      reorderLogItemSelect.addEventListener('change', function(){
+        const opt = reorderLogItemSelect.options[reorderLogItemSelect.selectedIndex];
+        document.getElementById('reorderLogVendor').value = opt.getAttribute('data-vendor') || '';
+        document.getElementById('reorderLogQty').value = opt.getAttribute('data-qty') || '';
+      });
+      document.getElementById('reorderLogBtn').addEventListener('click', async function(){
+        const itemId = reorderLogItemSelect.value;
+        const qty = Number(document.getElementById('reorderLogQty').value);
+        const vendor = document.getElementById('reorderLogVendor').value.trim();
+        const msgEl = document.getElementById('reorderLogMsg');
+        if (!itemId) { alert('Select an item'); return; }
+        if (!qty || qty <= 0) { alert('Enter a valid quantity'); return; }
+        await sb.from('stock_transactions').insert({ item_id: itemId, type: 'purchase', quantity: qty, vendor: vendor });
+        msgEl.textContent = 'Purchase logged!'; msgEl.className = 'import-msg ok';
+        setTimeout(function(){ loadAdminReorder(); }, 800);
       });
     };
 
@@ -1987,25 +2000,14 @@
 
       if (!data.length) { adminLeadsPanel.innerHTML = exportBar + '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No leads yet.</p></div>'; wireLeadsImport(); return; }
 
-      const leadCardsHtml = data.map(function(l){
+      const tableRows = data.map(function(l){
         const dateStr = l.created_at ? new Date(l.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-        return '<div class="lead-card ' + (l.status === 'New Lead' ? 'is-new' : '') + '" data-leadid="' + l.id + '">' +
-          '<div class="row"><span class="cname">' + l.customer_name + '</span>' +
-          '<span class="badge ' + (l.status === 'New Lead' ? 'new' : '') + '">' + l.status + '</span></div>' +
-          '<div class="meta">' + l.phone + (l.product ? ' &middot; ' + l.product : '') + '</div>' +
-          '<div class="meta">' + dateStr + (l.expected_value ? ' &middot; Rs.' + l.expected_value : '') + ' &middot; Assigned: ' + (l.assigned_to || '-') + '</div>' +
-          '<div class="lead-actions">' +
-            '<div class="row2">' +
-              '<select class="admin-status">' + stepsListGlobal.map(s => '<option value="'+s+'"'+(s===l.status?' selected':'')+'>'+s+'</option>').join('') + '</select>' +
-              '<select class="admin-assign">' + usersListGlobal.map(u => '<option value="'+u.name+'"'+(u.name===l.assigned_to?' selected':'')+'>'+u.name+'</option>').join('') + '</select>' +
-            '</div>' +
-            '<button type="button" class="lead-update-btn admin-lead-save">Update</button>' +
-          '</div>' +
-          '<div class="lead-msg"></div>' +
-          '</div>';
-      }).join('');
+        const statusSelect = '<select class="admin-status" style="min-width:120px;">' + stepsListGlobal.map(s => '<option value="'+s+'"'+(s===l.status?' selected':'')+'>'+s+'</option>').join('') + '</select>';
+        const assignSelect2 = '<select class="admin-assign" style="min-width:110px;">' + usersListGlobal.map(u => '<option value="'+u.name+'"'+(u.name===l.assigned_to?' selected':'')+'>'+u.name+'</option>').join('') + '</select>';
+        return [l.customer_name, l.phone, l.product || '-', statusSelect, assignSelect2, l.expected_value ? ('Rs.' + l.expected_value) : '-', dateStr, '<button type="button" class="admin-lead-save table-export-btn" data-leadid="' + l.id + '">Update</button><div class="lead-msg" data-msgfor="' + l.id + '" style="font-size:10.5px;"></div>'];
+      });
 
-      adminLeadsPanel.innerHTML = exportBar + leadCardsHtml;
+      adminLeadsPanel.innerHTML = exportBar + '<div class="card">' + tableHtml(['Customer', 'Phone', 'Product', 'Status', 'Assigned To', 'Value', 'Date', 'Action'], tableRows) + '</div>';
 
       document.getElementById('exportLeadsBtn').addEventListener('click', function(){
         exportToExcel(data.map(l => ({
@@ -2018,15 +2020,15 @@
 
       adminLeadsPanel.querySelectorAll('.admin-lead-save').forEach(function(saveBtn){
         saveBtn.addEventListener('click', async function(){
-          const cardEl = saveBtn.closest('.lead-card');
-          const leadId = cardEl.getAttribute('data-leadid');
-          const newStatus = cardEl.querySelector('.admin-status').value;
-          const newAssign = cardEl.querySelector('.admin-assign').value;
-          const msgEl = cardEl.querySelector('.lead-msg');
+          const leadId = saveBtn.getAttribute('data-leadid');
+          const row = saveBtn.closest('tr');
+          const newStatus = row.querySelector('.admin-status').value;
+          const newAssign = row.querySelector('.admin-assign').value;
+          const msgEl = row.querySelector('[data-msgfor="' + leadId + '"]');
           const { error } = await sb.from('leads').update({ status: newStatus, assigned_to: newAssign }).eq('id', leadId);
-          if (error) { msgEl.textContent = error.message; msgEl.className = 'lead-msg err'; return; }
+          if (error) { msgEl.textContent = error.message; msgEl.style.color = 'var(--err)'; return; }
           await sb.from('lead_log').insert({ lead_id: leadId, step: newStatus, updated_by: currentUser.name, description: 'Updated by admin' });
-          msgEl.textContent = 'Updated!'; msgEl.className = 'lead-msg ok';
+          msgEl.textContent = 'Updated!'; msgEl.style.color = 'var(--ok)';
         });
       });
     };
@@ -2838,45 +2840,49 @@
           return;
         }
 
-        listEl.innerHTML = filtered.map(function(it){
-          const stock = stockMap[it.id] || 0;
-          const reorderLvl = Number(it.reorder_level) || 0;
-          const low = stock <= reorderLvl;
-          const lastP = lastPurchaseMap[it.id];
-          const lastPurchaseTxt = lastP
-            ? 'Last Purchase: ' + new Date(lastP.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) + ' &middot; ' + lastP.quantity + ' units' + ((lastP.vendor || it.supplier) ? (' from ' + (lastP.vendor || it.supplier)) : '')
-            : 'No purchase recorded yet';
-          const suggestedQty = low ? Math.max(reorderLvl * 2 - stock, reorderLvl - stock, 1) : 0;
-          return '<div class="admin-item" data-id="' + it.id + '">' +
-            '<div class="row"><div><div class="title">' + (it.sku_code ? it.sku_code + ' &middot; ' : '') + it.item_name + '</div>' +
-            '<div class="sub">' + (it.item_group ? it.item_group + ' &middot; ' : '') + 'Stock: ' + stock + ' / Reorder Level: ' + reorderLvl + (low ? ' <span class="reorder-flag">REORDER</span>' : '') + ' &middot; Rs.' + (it.unit_price||0) + '</div>' +
-            '<div class="sub">' + lastPurchaseTxt + '</div>' +
-            (low ? '<div class="sub" style="color:var(--err);font-weight:700;">Suggested Purchase Qty: ' + suggestedQty + ' units</div>' : '') +
-            '</div>' +
-            '<div class="btns"><button type="button" class="icon-btn stock-item">+ Stock</button><button type="button" class="icon-btn edit-item">Edit</button>' +
-            '<button type="button" class="icon-btn danger del-item">Delete</button></div></div>' +
-            '<div class="edit-slot"></div></div>';
-        }).join('');
+        listEl.innerHTML = '<div id="itemsEditSlot"></div>' + '<div class="card">' + tableHtml(
+          ['SKU', 'Item', 'Group', 'Stock', 'Reorder Level', 'Price', 'Suggested Buy', 'Last Purchase', 'Action'],
+          filtered.map(function(it){
+            const stock = stockMap[it.id] || 0;
+            const reorderLvl = Number(it.reorder_level) || 0;
+            const low = stock <= reorderLvl;
+            const lastP = lastPurchaseMap[it.id];
+            const lastPurchaseTxt = lastP
+              ? (new Date(lastP.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) + ' &middot; ' + lastP.quantity + ((lastP.vendor || it.supplier) ? (' from ' + (lastP.vendor || it.supplier)) : ''))
+              : '-';
+            const suggestedQty = low ? Math.max(reorderLvl * 2 - stock, reorderLvl - stock, 1) : 0;
+            return [
+              it.sku_code || '-', it.item_name, it.item_group || '-',
+              (low ? '<span style="color:var(--err);font-weight:800;">' + stock + '</span>' : stock),
+              reorderLvl, 'Rs.' + (it.unit_price||0), (low ? suggestedQty : '-'), lastPurchaseTxt,
+              '<div style="display:flex;gap:4px;"><button type="button" class="icon-btn stock-item" data-id="' + it.id + '" style="padding:3px 8px;font-size:10.5px;">+Stock</button>' +
+              '<button type="button" class="icon-btn edit-item" data-id="' + it.id + '" style="padding:3px 8px;font-size:10.5px;">Edit</button>' +
+              '<button type="button" class="icon-btn danger del-item" data-id="' + it.id + '" style="padding:3px 8px;font-size:10.5px;">Del</button></div>'
+            ];
+          })
+        ) + '</div>';
 
+        const itemsEditSlot = document.getElementById('itemsEditSlot');
         listEl.querySelectorAll('.stock-item').forEach(function(b){
           b.addEventListener('click', function(){
-            const item = b.closest('.admin-item');
-            const id = item.getAttribute('data-id');
-            showStockForm(id, item.querySelector('.edit-slot'));
+            itemsEditSlot.innerHTML = '';
+            showStockForm(b.getAttribute('data-id'), itemsEditSlot);
+            itemsEditSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           });
         });
         listEl.querySelectorAll('.edit-item').forEach(function(b){
           b.addEventListener('click', function(){
-            const item = b.closest('.admin-item');
-            const id = item.getAttribute('data-id');
+            const id = b.getAttribute('data-id');
             const it = data.find(x => String(x.id) === id);
-            showItemForm(it, item.querySelector('.edit-slot'));
+            itemsEditSlot.innerHTML = '';
+            showItemForm(it, itemsEditSlot);
+            itemsEditSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
           });
         });
         listEl.querySelectorAll('.del-item').forEach(function(b){
           b.addEventListener('click', async function(){
             if (!confirm('Delete this item?')) return;
-            const id = b.closest('.admin-item').getAttribute('data-id');
+            const id = b.getAttribute('data-id');
             await sb.from('inventory').delete().eq('id', id);
             invalidateCache('inv');
             loadInventoryItems();
