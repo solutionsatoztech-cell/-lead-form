@@ -2096,35 +2096,39 @@
           loadAdminUsers();
         });
       });
-      listEl.innerHTML = data.map(function(u){
-        const rights = [];
-        if (u.role === 'admin') rights.push('Admin (all)');
-        else {
-          if (u.perm_leads) rights.push('Leads');
-          if (u.perm_users) rights.push('Users');
-          if (u.perm_inventory) rights.push('Inventory');
-        }
-        return '<div class="admin-item" data-id="' + u.id + '">' +
-          '<div class="row"><div><div class="title">' + u.name + '</div>' +
-          '<div class="sub">' + (u.mobile||'') + ' &middot; ' + (u.department||'') + (u.branch ? (' &middot; Branch: ' + u.branch) : '') + ' &middot; Login: ' + u.login_id + '</div>' +
-          '<div class="sub">Rights: ' + (rights.length ? rights.join(', ') : 'None') + '</div></div>' +
-          '<div class="btns"><button type="button" class="icon-btn edit-user">Edit</button>' +
-          '<button type="button" class="icon-btn danger del-user">Delete</button></div></div>' +
-          '<div class="edit-slot"></div></div>';
-      }).join('');
+      listEl.innerHTML = '<div id="usersEditSlot"></div>' + '<div class="card">' + tableHtml(
+        ['Name', 'Mobile', 'Department', 'Branch', 'Login ID', 'Rights', 'Action'],
+        data.map(function(u){
+          const rights = [];
+          if (u.role === 'admin') rights.push('Admin (all)');
+          else {
+            if (u.perm_leads) rights.push('Leads');
+            if (u.perm_users) rights.push('Users');
+            if (u.perm_inventory) rights.push('Inventory');
+          }
+          return [
+            u.name, u.mobile || '-', u.department || '-', u.branch || '-', u.login_id,
+            rights.length ? rights.join(', ') : 'None',
+            '<div style="display:flex;gap:4px;"><button type="button" class="icon-btn edit-user" data-id="' + u.id + '" style="padding:3px 8px;font-size:10.5px;">Edit</button>' +
+            '<button type="button" class="icon-btn danger del-user" data-id="' + u.id + '" style="padding:3px 8px;font-size:10.5px;">Delete</button></div>'
+          ];
+        })
+      ) + '</div>';
 
+      const usersEditSlot = document.getElementById('usersEditSlot');
       listEl.querySelectorAll('.edit-user').forEach(function(b){
         b.addEventListener('click', function(){
-          const item = b.closest('.admin-item');
-          const id = item.getAttribute('data-id');
+          const id = b.getAttribute('data-id');
           const u = data.find(x => String(x.id) === id);
-          showUserForm(u, item.querySelector('.edit-slot'));
+          usersEditSlot.innerHTML = '';
+          showUserForm(u, usersEditSlot);
+          usersEditSlot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         });
       });
       listEl.querySelectorAll('.del-user').forEach(function(b){
         b.addEventListener('click', async function(){
           if (!confirm('Delete this user?')) return;
-          const id = b.closest('.admin-item').getAttribute('data-id');
+          const id = b.getAttribute('data-id');
           await sb.from('users').delete().eq('id', id);
           loadAdminUsers();
         });
