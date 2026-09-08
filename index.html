@@ -418,6 +418,19 @@
     });
   }
 
+  // Wraps a promise so it rejects with a timeout error if the network
+  // request hangs (never resolves or rejects on its own) — common on
+  // weak/unstable connections. Without this, a stuck request would
+  // wait forever and our retry logic would never kick in.
+  function withTimeout(promise, ms){
+    return Promise.race([
+      promise,
+      new Promise(function(_, reject){
+        setTimeout(function(){ reject(new Error('Request timed out')); }, ms);
+      })
+    ]);
+  }
+
   const loginScreen = document.getElementById('loginScreen');
   const appScreen = document.getElementById('appScreen');
   const loginId = document.getElementById('loginId');
@@ -933,7 +946,7 @@
     async function loadUsers(attempt){
       attempt = attempt || 1;
       try {
-        const { data, error } = await sb.from('users').select('name, mobile, email, department, role');
+        const { data, error } = await withTimeout(sb.from('users').select('name, mobile, email, department, role'), 8000);
         if (error) throw error;
         if (data) fillAssignDropdown(data);
       } catch (e) {
@@ -947,10 +960,10 @@
     async function loadItems(attempt){
       attempt = attempt || 1;
       try {
-        const [{ data: items, error: e1 }, { data: txns, error: e2 }] = await Promise.all([
+        const [{ data: items, error: e1 }, { data: txns, error: e2 }] = await withTimeout(Promise.all([
           sb.from('inventory').select('id, item_name, department'),
           sb.from('stock_transactions').select('item_id, type, quantity')
-        ]);
+        ]), 8000);
         if (e1 || e2) throw (e1 || e2);
         if (items) {
           const stockMap = {};
@@ -2984,7 +2997,13 @@
     attempt = attempt || 1;
     const dashList = document.getElementById('dashList');
     if (dashList) dashList.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
-    const { data, error } = await sb.from('leads').select('*').eq('assigned_to', currentUser.name).order('created_at', { ascending: false });
+    let data, error;
+    try {
+      const result = await withTimeout(sb.from('leads').select('*').eq('assigned_to', currentUser.name).order('created_at', { ascending: false }), 8000);
+      data = result.data; error = result.error;
+    } catch (e) {
+      error = e;
+    }
     if (!error) {
       if (window.renderDashboard) window.renderDashboard(data || []);
     } else if (attempt < 3) {
