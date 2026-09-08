@@ -361,6 +361,25 @@
   const SUPABASE_KEY = "sb_publishable_l9_ENeEmiv59DJta1I8BGA_b7W7PXWV";
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+  // Lightweight cache for reference/master data that rarely changes
+  // (item list, vendor/customer name suggestions, master lists).
+  // Keeps the app snappy by avoiding repeat network calls when
+  // switching between forms within a short window.
+  const _cache = {};
+  async function cachedFetch(key, ttlMs, fetchFn){
+    const now = Date.now();
+    const hit = _cache[key];
+    if (hit && (now - hit.time) < ttlMs) return hit.data;
+    const data = await fetchFn();
+    _cache[key] = { data: data, time: now };
+    return data;
+  }
+  function invalidateCache(prefix){
+    Object.keys(_cache).forEach(function(k){
+      if (!prefix || k.indexOf(prefix) === 0) delete _cache[k];
+    });
+  }
+
   const loginScreen = document.getElementById('loginScreen');
   const appScreen = document.getElementById('appScreen');
   const loginId = document.getElementById('loginId');
@@ -1806,7 +1825,7 @@
         renderOrderList();
       });
 
-      const { data: items } = await sb.from('inventory').select('id, item_name');
+      const items = await cachedFetch('inv-basic', 20000, async () => (await sb.from('inventory').select('id, item_name')).data);
       let partyNamesList = [];
       if (kind === 'sale') {
         const { data: custData } = await sb.from('leads').select('customer_name');
@@ -2032,7 +2051,7 @@
       panelEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
       const [{ data: items }, { data: txns }] = await Promise.all([
-        sb.from('inventory').select('id, item_name, unit_price, supplier, reorder_level'),
+        cachedFetch('inv-full', 20000, () => sb.from('inventory').select('id, item_name, unit_price, supplier, reorder_level')),
         sb.from('stock_transactions').select('*').eq('type', type).order('created_at', { ascending: false })
       ]);
       const itemsById = {};
@@ -2331,6 +2350,7 @@
             if (!confirm('Delete this item?')) return;
             const id = b.closest('.admin-item').getAttribute('data-id');
             await sb.from('inventory').delete().eq('id', id);
+            invalidateCache('inv');
             loadInventoryItems();
           });
         });
@@ -2413,6 +2433,7 @@
         } else {
           await sb.from('inventory').insert(payload);
         }
+        invalidateCache('inv');
         loadInventoryItems();
       });
     }
