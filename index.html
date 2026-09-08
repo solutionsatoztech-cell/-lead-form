@@ -186,6 +186,8 @@
   .menu-item:hover{background:var(--navy); color:#fff;}
   .mi-arrow{color:var(--muted); font-size:15px;}
   .menu-item:hover .mi-arrow{color:#fff;}
+  .menu-group-label{padding:8px 16px 4px; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--muted);}
+  .menu-divider{height:1px; background:var(--line); margin:4px 10px;}
 </style>
 </head>
 <body>
@@ -220,18 +222,28 @@
     <button type="button" class="menu-btn hidden" id="menuAdminBtn">Administration <span class="menu-arrow">&#9662;</span></button>
   </div>
   <div class="menu-dropdown hidden" id="menuTransDropdown">
+    <div class="menu-group-label">Leads</div>
     <div class="menu-item" id="navNewLead"><span>New Lead</span><span class="mi-arrow">&#8250;</span></div>
-    <div class="menu-item" id="navPurchaseEntry"><span>Purchase Entry</span><span class="mi-arrow">&#8250;</span></div>
-    <div class="menu-item" id="navSaleEntry"><span>Sale Entry</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-group-label">Orders</div>
     <div class="menu-item" id="navPurchaseOrder"><span>Purchase Order</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navSalesOrder"><span>Sales Order</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-group-label">Entries</div>
+    <div class="menu-item" id="navPurchaseEntry"><span>Purchase Entry</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navSaleEntry"><span>Sale Entry</span><span class="mi-arrow">&#8250;</span></div>
   </div>
   <div class="menu-dropdown hidden" id="menuDisplayDropdown">
+    <div class="menu-group-label">My View</div>
     <div class="menu-item" id="navMyDash"><span>My Dashboard</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navCustomers"><span>Customers</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-group-label">Business Reports</div>
     <div class="menu-item" id="navAdminDash"><span>Admin Dashboard</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navReports"><span>Reports</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navReorder"><span>Reorder</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-group-label">Records</div>
     <div class="menu-item" id="navAllLeads"><span>All Leads</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navStock"><span>Stock / Items</span><span class="mi-arrow">&#8250;</span></div>
   </div>
@@ -2258,7 +2270,7 @@
           '<div class="import-msg" id="ordSaveMsg"></div>' +
         '</div>';
 
-      const ordItemRows = document.getElementById('ordItemRows');
+      const ordItemRows = addSection.querySelector('#ordItemRows');
       const itemOptionsHtml = '<option value="">-- Select Item --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
 
       function addOrderItemRow(){
@@ -2275,12 +2287,12 @@
         });
       }
       addOrderItemRow();
-      document.getElementById('ordAddRowBtn').addEventListener('click', addOrderItemRow);
+      addSection.querySelector('#ordAddRowBtn').addEventListener('click', addOrderItemRow);
 
-      document.getElementById('ordSaveBtn').addEventListener('click', async function(){
-        const party = document.getElementById('ordParty').value.trim();
-        const note = document.getElementById('ordNote').value.trim();
-        const msgEl = document.getElementById('ordSaveMsg');
+      addSection.querySelector('#ordSaveBtn').addEventListener('click', async function(){
+        const party = addSection.querySelector('#ordParty').value.trim();
+        const note = addSection.querySelector('#ordNote').value.trim();
+        const msgEl = addSection.querySelector('#ordSaveMsg');
 
         const rows = Array.from(ordItemRows.querySelectorAll('.ord-item-row')).map(function(row){
           return {
@@ -2303,8 +2315,8 @@
         msgEl.textContent = entries.length + ' item(s) saved to order!'; msgEl.className = 'import-msg ok';
         ordItemRows.innerHTML = '';
         addOrderItemRow();
-        document.getElementById('ordParty').value = '';
-        document.getElementById('ordNote').value = '';
+        addSection.querySelector('#ordParty').value = '';
+        addSection.querySelector('#ordNote').value = '';
         setTimeout(function(){ listTabBtn.click(); }, 600);
       });
 
@@ -2678,7 +2690,7 @@
         });
       });
 
-      const ledgerItemRows = document.getElementById('ledgerItemRows');
+      const ledgerItemRows = panelEl.querySelector('#ledgerItemRows');
       const ledgerItemOptionsHtml = '<option value="">-- Select Item --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
 
       function addLedgerItemRow(){
@@ -2695,13 +2707,13 @@
         });
       }
       addLedgerItemRow();
-      document.getElementById('ledgerAddRowBtn').addEventListener('click', addLedgerItemRow);
+      panelEl.querySelector('#ledgerAddRowBtn').addEventListener('click', addLedgerItemRow);
 
-      document.getElementById('ledgerSaveBtn').addEventListener('click', async function(){
-        const note = document.getElementById('ledgerNote').value.trim();
-        const vendorInput = document.getElementById('ledgerVendor');
+      panelEl.querySelector('#ledgerSaveBtn').addEventListener('click', async function(){
+        const note = panelEl.querySelector('#ledgerNote').value.trim();
+        const vendorInput = panelEl.querySelector('#ledgerVendor');
         const vendorVal = vendorInput ? vendorInput.value.trim() : '';
-        const customerInput = document.getElementById('ledgerCustomer');
+        const customerInput = panelEl.querySelector('#ledgerCustomer');
         const customerVal = customerInput ? customerInput.value.trim() : '';
 
         const rows = Array.from(ledgerItemRows.querySelectorAll('.ledger-item-row')).map(function(row){
@@ -2767,14 +2779,16 @@
 
       const [{ data, error }, { data: txns }] = await Promise.all([
         sb.from('inventory').select('*').order('item_name'),
-        sb.from('stock_transactions').select('item_id, type, quantity')
+        sb.from('stock_transactions').select('item_id, type, quantity, created_at, vendor')
       ]);
       const listEl = document.getElementById('itemsList');
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
 
       document.getElementById('exportItemsBtn').addEventListener('click', function(){
         exportToExcel((data||[]).map(it => ({
-          sku_code: it.sku_code, item_group: it.item_group, item_name: it.item_name,
+          sku_code: it.sku_code, item_name: it.item_name, unit: it.unit || 'Pcs.',
+          opening: openingMap[it.id] || 0, inward: inwardMap[it.id] || 0, outward: outwardMap[it.id] || 0,
+          closing: (openingMap[it.id]||0) + (inwardMap[it.id]||0) - (outwardMap[it.id]||0),
           reorder_level: it.reorder_level, unit_price: it.unit_price, department: it.department, supplier: it.supplier
         })), 'inventory_export.xlsx', 'Inventory');
       });
@@ -2803,10 +2817,16 @@
       });
 
       const stockMap = {};
+      const openingMap = {};
+      const inwardMap = {};
+      const outwardMap = {};
       const lastPurchaseMap = {};
       (txns || []).forEach(function(t){
         const q = Number(t.quantity) || 0;
         stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+        if (t.type === 'opening') openingMap[t.item_id] = (openingMap[t.item_id] || 0) + q;
+        if (t.type === 'purchase') inwardMap[t.item_id] = (inwardMap[t.item_id] || 0) + q;
+        if (t.type === 'sale') outwardMap[t.item_id] = (outwardMap[t.item_id] || 0) + q;
         if (t.type === 'purchase') {
           const existing = lastPurchaseMap[t.item_id];
           if (!existing || new Date(t.created_at) > new Date(existing.created_at)) {
@@ -2841,20 +2861,19 @@
         }
 
         listEl.innerHTML = '<div id="itemsEditSlot"></div>' + '<div class="card">' + tableHtml(
-          ['SKU', 'Item', 'Group', 'Stock', 'Reorder Level', 'Price', 'Suggested Buy', 'Last Purchase', 'Action'],
+          ['SKU', 'Item', 'Unit', 'Opening', 'Inward', 'Outward', 'Closing', 'Reorder Level', 'Price', 'Action'],
           filtered.map(function(it){
-            const stock = stockMap[it.id] || 0;
+            const opening = openingMap[it.id] || 0;
+            const inward = inwardMap[it.id] || 0;
+            const outward = outwardMap[it.id] || 0;
+            const closing = opening + inward - outward;
             const reorderLvl = Number(it.reorder_level) || 0;
-            const low = stock <= reorderLvl;
-            const lastP = lastPurchaseMap[it.id];
-            const lastPurchaseTxt = lastP
-              ? (new Date(lastP.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) + ' &middot; ' + lastP.quantity + ((lastP.vendor || it.supplier) ? (' from ' + (lastP.vendor || it.supplier)) : ''))
-              : '-';
-            const suggestedQty = low ? Math.max(reorderLvl * 2 - stock, reorderLvl - stock, 1) : 0;
+            const low = closing <= reorderLvl;
             return [
-              it.sku_code || '-', it.item_name, it.item_group || '-',
-              (low ? '<span style="color:var(--err);font-weight:800;">' + stock + '</span>' : stock),
-              reorderLvl, 'Rs.' + (it.unit_price||0), (low ? suggestedQty : '-'), lastPurchaseTxt,
+              it.sku_code || '-', it.item_name, it.unit || 'Pcs.',
+              opening, inward, outward,
+              (low ? '<span style="color:var(--err);font-weight:800;">' + closing + '</span>' : closing),
+              reorderLvl, 'Rs.' + (it.unit_price||0),
               '<div style="display:flex;gap:4px;"><button type="button" class="icon-btn stock-item" data-id="' + it.id + '" style="padding:3px 8px;font-size:10.5px;">+Stock</button>' +
               '<button type="button" class="icon-btn edit-item" data-id="' + it.id + '" style="padding:3px 8px;font-size:10.5px;">Edit</button>' +
               '<button type="button" class="icon-btn danger del-item" data-id="' + it.id + '" style="padding:3px 8px;font-size:10.5px;">Del</button></div>'
