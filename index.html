@@ -188,6 +188,18 @@
   .menu-item:hover .mi-arrow{color:#fff;}
   .menu-group-label{padding:8px 16px 4px; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--muted);}
   .menu-divider{height:1px; background:var(--line); margin:4px 10px;}
+
+  .entry-grid-wrap{overflow-x:auto; border:1px solid var(--line); border-radius:10px; margin-top:8px;}
+  .entry-grid{width:100%; border-collapse:collapse; font-size:12.5px; min-width:520px;}
+  .entry-grid th{background:#F4FAF4; color:var(--navy-dark); font-weight:800; padding:8px 6px; text-align:left; border-bottom:2px solid var(--line); white-space:nowrap;}
+  .entry-grid td{padding:4px; border-bottom:1px solid var(--line); vertical-align:middle;}
+  .entry-grid tr:last-child td{border-bottom:none;}
+  .entry-grid input, .entry-grid select{width:100%; padding:7px 6px; border:1px solid var(--line); border-radius:6px; font-size:12.5px; background:#fff;}
+  .entry-grid .sn-cell{width:28px; text-align:center; color:var(--muted); font-weight:700;}
+  .entry-grid .amt-cell{white-space:nowrap; font-weight:700; color:var(--navy-dark); text-align:right; padding-right:8px;}
+  .entry-grid .rm-cell{width:32px; text-align:center;}
+  .entry-grid .rm-cell button{background:none; border:none; color:var(--err); font-size:16px; cursor:pointer; padding:2px 6px;}
+  .entry-grid-total{display:flex; justify-content:flex-end; gap:10px; padding:8px 10px; font-weight:800; color:var(--navy-dark); font-size:13px; background:#F4FAF4; border-top:1px solid var(--line);}
 </style>
 </head>
 <body>
@@ -2237,7 +2249,7 @@
         renderOrderList();
       });
 
-      const items = await cachedFetch('inv-basic', 20000, async () => (await sb.from('inventory').select('id, item_name')).data);
+      const items = await cachedFetch('inv-full-price', 20000, async () => (await sb.from('inventory').select('id, item_name, unit, unit_price')).data);
       let partyNamesList = [];
       if (kind === 'sale') {
         const { data: custData } = await sb.from('leads').select('customer_name');
@@ -2257,27 +2269,73 @@
           '<span class="mini-label">New ' + (kind === 'purchase' ? 'Purchase Order (to Vendor)' : 'Sales Order (from Customer)') + '</span>' +
           '<input type="text" id="ordParty" list="ordPartyList" placeholder="' + (kind === 'purchase' ? 'Vendor Name (pick from list or type new)' : 'Customer Name (pick from list or type new)') + '" style="margin-top:8px;">' +
           '<datalist id="ordPartyList">' + partyNamesList.map(n => '<option value="' + n + '">').join('') + '</datalist>' +
-          '<div id="ordItemRows" style="margin-top:8px;"></div>' +
-          '<button type="button" class="icon-btn" id="ordAddRowBtn" style="width:100%;margin-top:4px;">+ Add Another Item</button>' +
+          '<div class="entry-grid-wrap">' +
+            '<table class="entry-grid">' +
+              '<thead><tr><th class="sn-cell">#</th><th>Item</th><th style="width:80px;">Qty</th><th style="width:80px;">Unit</th><th style="width:100px;">Price (Rs.)</th><th style="width:100px;">Amount (Rs.)</th><th class="rm-cell"></th></tr></thead>' +
+              '<tbody id="ordItemRows"></tbody>' +
+            '</table>' +
+            '<div class="entry-grid-total"><span>Total:</span><span id="ordGrandTotal">Rs.0</span></div>' +
+          '</div>' +
+          '<button type="button" class="icon-btn" id="ordAddRowBtn" style="width:100%;margin-top:8px;">+ Add Another Item</button>' +
           '<input type="text" id="ordNote" placeholder="Optional note (applies to whole order)" style="margin-top:8px;">' +
           '<button type="button" class="add-btn" id="ordSaveBtn" style="margin-top:8px;">Save Order</button>' +
           '<div class="import-msg" id="ordSaveMsg"></div>' +
         '</div>';
 
       const ordItemRows = addSection.querySelector('#ordItemRows');
-      const itemOptionsHtml = '<option value="">-- Select Item --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
+      const ordGrandTotal = addSection.querySelector('#ordGrandTotal');
+      const itemsById3 = {};
+      (items || []).forEach(function(it){ itemsById3[it.id] = it; });
+      const itemOptionsHtml = '<option value="">-- Select --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
+
+      function recalcGrandTotal(){
+        let total = 0;
+        ordItemRows.querySelectorAll('tr').forEach(function(row){
+          const amt = Number(row.querySelector('.ord-amt').textContent.replace(/[^0-9.]/g, '')) || 0;
+          total += amt;
+        });
+        ordGrandTotal.textContent = 'Rs.' + total.toLocaleString('en-IN');
+      }
+
+      function recalcRow(row){
+        const itemId = row.querySelector('.ord-item-select').value;
+        const qty = Number(row.querySelector('.ord-item-qty').value) || 0;
+        const priceInput = row.querySelector('.ord-item-price');
+        const price = Number(priceInput.value) || 0;
+        const amt = qty * price;
+        row.querySelector('.ord-amt').textContent = 'Rs.' + amt.toLocaleString('en-IN');
+        recalcGrandTotal();
+      }
 
       function addOrderItemRow(){
-        const row = document.createElement('div');
-        row.className = 'row2 ord-item-row';
-        row.style.marginBottom = '8px';
+        const row = document.createElement('tr');
+        row.className = 'ord-item-row';
         row.innerHTML =
-          '<select class="ord-item-select">' + itemOptionsHtml + '</select>' +
-          '<input type="number" class="ord-item-qty" placeholder="Quantity">' +
-          '<button type="button" class="icon-btn danger ord-remove-row" style="flex:0 0 auto;">&times;</button>';
+          '<td class="sn-cell"></td>' +
+          '<td><select class="ord-item-select">' + itemOptionsHtml + '</select></td>' +
+          '<td><input type="number" class="ord-item-qty" placeholder="0"></td>' +
+          '<td><span class="ord-unit">-</span></td>' +
+          '<td><input type="number" class="ord-item-price" placeholder="0"></td>' +
+          '<td class="amt-cell ord-amt">Rs.0</td>' +
+          '<td class="rm-cell"><button type="button" class="ord-remove-row">&times;</button></td>';
         ordItemRows.appendChild(row);
+
+        row.querySelector('.ord-item-select').addEventListener('change', function(){
+          const it = itemsById3[this.value];
+          row.querySelector('.ord-unit').textContent = (it && it.unit) ? it.unit : '-';
+          row.querySelector('.ord-item-price').value = (it && it.unit_price) ? it.unit_price : '';
+          recalcRow(row);
+        });
+        row.querySelector('.ord-item-qty').addEventListener('input', function(){ recalcRow(row); });
+        row.querySelector('.ord-item-price').addEventListener('input', function(){ recalcRow(row); });
         row.querySelector('.ord-remove-row').addEventListener('click', function(){
-          if (ordItemRows.children.length > 1) row.remove();
+          if (ordItemRows.children.length > 1) { row.remove(); renumberRows(); recalcGrandTotal(); }
+        });
+        renumberRows();
+      }
+      function renumberRows(){
+        ordItemRows.querySelectorAll('tr').forEach(function(row, i){
+          row.querySelector('.sn-cell').textContent = i + 1;
         });
       }
       addOrderItemRow();
@@ -2528,7 +2586,7 @@
       panelEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
       const [{ data: items }, { data: txns }] = await Promise.all([
-        cachedFetch('inv-full', 20000, () => sb.from('inventory').select('id, item_name, unit_price, supplier, reorder_level')),
+        cachedFetch('inv-full', 20000, () => sb.from('inventory').select('id, item_name, unit, unit_price, supplier, reorder_level')),
         sb.from('stock_transactions').select('*').eq('type', type).order('created_at', { ascending: false })
       ]);
       const itemsById = {};
@@ -2558,8 +2616,14 @@
           '<span class="mini-label">Add ' + (type === 'purchase' ? 'Purchase' : 'Sale') + ' Entry</span>' +
           vendorFieldHtml +
           partyDatalistHtml +
-          '<div id="ledgerItemRows" style="margin-top:8px;"></div>' +
-          '<button type="button" class="icon-btn" id="ledgerAddRowBtn" style="width:100%;margin-top:4px;">+ Add Another Item</button>' +
+          '<div class="entry-grid-wrap">' +
+            '<table class="entry-grid">' +
+              '<thead><tr><th class="sn-cell">#</th><th>Item</th><th style="width:80px;">Qty</th><th style="width:80px;">Unit</th><th style="width:100px;">Price (Rs.)</th><th style="width:100px;">Amount (Rs.)</th><th class="rm-cell"></th></tr></thead>' +
+              '<tbody id="ledgerItemRows"></tbody>' +
+            '</table>' +
+            '<div class="entry-grid-total"><span>Total:</span><span id="ledgerGrandTotal">Rs.0</span></div>' +
+          '</div>' +
+          '<button type="button" class="icon-btn" id="ledgerAddRowBtn" style="width:100%;margin-top:8px;">+ Add Another Item</button>' +
           '<input type="text" id="ledgerNote" placeholder="Optional note (applies to whole entry)" style="margin-top:8px;">' +
           '<button type="button" class="add-btn" id="ledgerSaveBtn" style="margin-top:8px;">Save Entry</button>' +
         '</div>';
@@ -2685,19 +2749,55 @@
       });
 
       const ledgerItemRows = panelEl.querySelector('#ledgerItemRows');
-      const ledgerItemOptionsHtml = '<option value="">-- Select Item --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
+      const ledgerGrandTotal = panelEl.querySelector('#ledgerGrandTotal');
+      const itemsById4 = {};
+      (items || []).forEach(function(it){ itemsById4[it.id] = it; });
+      const ledgerItemOptionsHtml = '<option value="">-- Select --</option>' + (items || []).map(it => '<option value="' + it.id + '">' + it.item_name + '</option>').join('');
+
+      function recalcLedgerTotal(){
+        let total = 0;
+        ledgerItemRows.querySelectorAll('tr').forEach(function(row){
+          const amt = Number(row.querySelector('.ledger-amt').textContent.replace(/[^0-9.]/g, '')) || 0;
+          total += amt;
+        });
+        ledgerGrandTotal.textContent = 'Rs.' + total.toLocaleString('en-IN');
+      }
+      function recalcLedgerRow(row){
+        const qty = Number(row.querySelector('.ledger-item-qty').value) || 0;
+        const price = Number(row.querySelector('.ledger-item-price').value) || 0;
+        row.querySelector('.ledger-amt').textContent = 'Rs.' + (qty * price).toLocaleString('en-IN');
+        recalcLedgerTotal();
+      }
 
       function addLedgerItemRow(){
-        const row = document.createElement('div');
-        row.className = 'row2 ledger-item-row';
-        row.style.marginBottom = '8px';
+        const row = document.createElement('tr');
+        row.className = 'ledger-item-row';
         row.innerHTML =
-          '<select class="ledger-item-select">' + ledgerItemOptionsHtml + '</select>' +
-          '<input type="number" class="ledger-item-qty" placeholder="Quantity">' +
-          '<button type="button" class="icon-btn danger ledger-remove-row" style="flex:0 0 auto;">&times;</button>';
+          '<td class="sn-cell"></td>' +
+          '<td><select class="ledger-item-select">' + ledgerItemOptionsHtml + '</select></td>' +
+          '<td><input type="number" class="ledger-item-qty" placeholder="0"></td>' +
+          '<td><span class="ledger-unit">-</span></td>' +
+          '<td><input type="number" class="ledger-item-price" placeholder="0"></td>' +
+          '<td class="amt-cell ledger-amt">Rs.0</td>' +
+          '<td class="rm-cell"><button type="button" class="ledger-remove-row">&times;</button></td>';
         ledgerItemRows.appendChild(row);
+
+        row.querySelector('.ledger-item-select').addEventListener('change', function(){
+          const it = itemsById4[this.value];
+          row.querySelector('.ledger-unit').textContent = (it && it.unit) ? it.unit : '-';
+          row.querySelector('.ledger-item-price').value = (it && it.unit_price) ? it.unit_price : '';
+          recalcLedgerRow(row);
+        });
+        row.querySelector('.ledger-item-qty').addEventListener('input', function(){ recalcLedgerRow(row); });
+        row.querySelector('.ledger-item-price').addEventListener('input', function(){ recalcLedgerRow(row); });
         row.querySelector('.ledger-remove-row').addEventListener('click', function(){
-          if (ledgerItemRows.children.length > 1) row.remove();
+          if (ledgerItemRows.children.length > 1) { row.remove(); renumberLedgerRows(); recalcLedgerTotal(); }
+        });
+        renumberLedgerRows();
+      }
+      function renumberLedgerRows(){
+        ledgerItemRows.querySelectorAll('tr').forEach(function(row, i){
+          row.querySelector('.sn-cell').textContent = i + 1;
         });
       }
       addLedgerItemRow();
