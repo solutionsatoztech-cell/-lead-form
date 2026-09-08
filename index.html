@@ -808,6 +808,91 @@
     wireNav('navDashReorder', ['tabAdminBtn', 'subReorderBtn']);
   }
 
+  // ============ TASK CHECKLIST ============
+  function todayISO(){ return new Date().toISOString().slice(0, 10); }
+  function currentPeriodDueDate(frequency){
+    const now = new Date();
+    if (frequency === 'Daily') return todayISO();
+    if (frequency === 'Monthly') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+    if (frequency === 'HalfYearly') {
+      const half = now.getMonth() < 6 ? 0 : 6;
+      return new Date(now.getFullYear(), half, 1).toISOString().slice(0, 10);
+    }
+    return todayISO();
+  }
+  function daysBetween(d1, d2){
+    return Math.round((new Date(d2) - new Date(d1)) / 86400000);
+  }
+
+  // Ensures a Pending completion row exists for each active task assigned
+  // to the given user for the CURRENT due period (today / this month / this half-year).
+  async function ensureDueTaskCompletions(userName){
+    const { data: myTasks } = await sb.from('tasks').select('*').eq('assigned_to', userName).eq('is_active', true);
+    if (!myTasks || !myTasks.length) return;
+    for (const t of myTasks) {
+      const due = currentPeriodDueDate(t.frequency);
+      const { data: existing } = await sb.from('task_completions').select('id').eq('task_id', t.id).eq('due_date', due).limit(1);
+      if (!existing || !existing.length) {
+        await sb.from('task_completions').insert({ task_id: t.id, due_date: due, status: 'Pending' });
+      }
+    }
+  }
+
+  async function loadMyTasks(){
+    const el = document.getElementById('myTasksSection');
+    if (!el) return;
+    el.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading your tasks...</p>';
+
+    try {
+      await ensureDueTaskCompletions(currentUser.name);
+    } catch (e) {
+      el.innerHTML = '';
+      return;
+    }
+
+    const { data: myTasks } = await sb.from('tasks').select('id, title, description, frequency').eq('assigned_to', currentUser.name).eq('is_active', true);
+    if (!myTasks || !myTasks.length) { el.innerHTML = ''; return; }
+    const taskIds = myTasks.map(t => t.id);
+    const tasksById = {};
+    myTasks.forEach(function(t){ tasksById[t.id] = t; });
+
+    const { data: pending } = await sb.from('task_completions').select('*').in('task_id', taskIds).eq('status', 'Pending').order('due_date', { ascending: true });
+
+    if (!pending || !pending.length) {
+      el.innerHTML = '<div class="card" style="padding:14px;margin-bottom:14px;"><span class="mini-label">My Tasks</span><p style="text-align:center;color:var(--ok);font-weight:700;margin:8px 0 0;">All caught up! No pending tasks.</p></div>';
+      return;
+    }
+
+    el.innerHTML =
+      '<div class="card" style="padding:14px;margin-bottom:14px;">' +
+        '<span class="mini-label">My Tasks (' + pending.length + ' pending)</span>' +
+        pending.map(function(c){
+          const t = tasksById[c.task_id];
+          const overdue = daysBetween(c.due_date, todayISO()) > 0;
+          return '<div class="lead-card" data-compid="' + c.id + '" style="' + (overdue ? 'border-color:var(--err);' : '') + '">' +
+            '<div class="row"><span class="cname">' + (t ? t.title : 'Task') + '</span><span class="badge ' + (overdue ? '' : 'new') + '" style="' + (overdue ? 'background:#FCE1E1;color:var(--err);' : '') + '">' + (t ? t.frequency : '') + '</span></div>' +
+            (t && t.description ? '<div class="meta">' + t.description + '</div>' : '') +
+            '<div class="meta">Due: ' + c.due_date + (overdue ? ' &middot; <b style="color:var(--err);">Overdue</b>' : '') + '</div>' +
+            '<button type="button" class="task-done-btn" style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:9px;background:var(--ok);color:#fff;font-weight:800;cursor:pointer;">Mark Done</button>' +
+            '</div>';
+        }).join('') +
+      '</div>';
+
+    el.querySelectorAll('.task-done-btn').forEach(function(btn){
+      btn.addEventListener('click', async function(){
+        const card = btn.closest('.lead-card');
+        const compId = card.getAttribute('data-compid');
+        const comp = pending.find(c => String(c.id) === compId);
+        const delayDays = daysBetween(comp.due_date, todayISO());
+        const status = delayDays > 0 ? 'Delayed' : 'Done';
+        btn.disabled = true; btn.textContent = 'Saving...';
+        await sb.from('task_completions').update({ completed_at: new Date().toISOString(), completed_by: currentUser.name, status: status }).eq('id', compId);
+        loadMyTasks();
+      });
+    });
+  }
+
+
   function initApp(){
     appInitialized = true;
 
@@ -1356,22 +1441,6 @@
       });
     }
 
-    // ============ TASK CHECKLIST ============
-    function todayISO(){ return new Date().toISOString().slice(0, 10); }
-    function currentPeriodDueDate(frequency){
-      const now = new Date();
-      if (frequency === 'Daily') return todayISO();
-      if (frequency === 'Monthly') return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
-      if (frequency === 'HalfYearly') {
-        const half = now.getMonth() < 6 ? 0 : 6;
-        return new Date(now.getFullYear(), half, 1).toISOString().slice(0, 10);
-      }
-      return todayISO();
-    }
-    function daysBetween(d1, d2){
-      return Math.round((new Date(d2) - new Date(d1)) / 86400000);
-    }
-
     window.loadAdminTasks = function(){
       adminTasksPanel.innerHTML =
         '<div class="subtabs">' +
@@ -1490,74 +1559,6 @@
 
       activateTaskSub('add');
     };
-
-    // Ensures a Pending completion row exists for each active task assigned
-    // to the given user for the CURRENT due period (today / this month / this half-year).
-    async function ensureDueTaskCompletions(userName){
-      const { data: myTasks } = await sb.from('tasks').select('*').eq('assigned_to', userName).eq('is_active', true);
-      if (!myTasks || !myTasks.length) return;
-      for (const t of myTasks) {
-        const due = currentPeriodDueDate(t.frequency);
-        const { data: existing } = await sb.from('task_completions').select('id').eq('task_id', t.id).eq('due_date', due).limit(1);
-        if (!existing || !existing.length) {
-          await sb.from('task_completions').insert({ task_id: t.id, due_date: due, status: 'Pending' });
-        }
-      }
-    }
-
-    async function loadMyTasks(){
-      const el = document.getElementById('myTasksSection');
-      if (!el) return;
-      el.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading your tasks...</p>';
-
-      try {
-        await ensureDueTaskCompletions(currentUser.name);
-      } catch (e) {
-        el.innerHTML = '';
-        return;
-      }
-
-      const { data: myTasks } = await sb.from('tasks').select('id, title, description, frequency').eq('assigned_to', currentUser.name).eq('is_active', true);
-      if (!myTasks || !myTasks.length) { el.innerHTML = ''; return; }
-      const taskIds = myTasks.map(t => t.id);
-      const tasksById = {};
-      myTasks.forEach(function(t){ tasksById[t.id] = t; });
-
-      const { data: pending } = await sb.from('task_completions').select('*').in('task_id', taskIds).eq('status', 'Pending').order('due_date', { ascending: true });
-
-      if (!pending || !pending.length) {
-        el.innerHTML = '<div class="card" style="padding:14px;margin-bottom:14px;"><span class="mini-label">My Tasks</span><p style="text-align:center;color:var(--ok);font-weight:700;margin:8px 0 0;">All caught up! No pending tasks.</p></div>';
-        return;
-      }
-
-      el.innerHTML =
-        '<div class="card" style="padding:14px;margin-bottom:14px;">' +
-          '<span class="mini-label">My Tasks (' + pending.length + ' pending)</span>' +
-          pending.map(function(c){
-            const t = tasksById[c.task_id];
-            const overdue = daysBetween(c.due_date, todayISO()) > 0;
-            return '<div class="lead-card" data-compid="' + c.id + '" style="' + (overdue ? 'border-color:var(--err);' : '') + '">' +
-              '<div class="row"><span class="cname">' + (t ? t.title : 'Task') + '</span><span class="badge ' + (overdue ? '' : 'new') + '" style="' + (overdue ? 'background:#FCE1E1;color:var(--err);' : '') + '">' + (t ? t.frequency : '') + '</span></div>' +
-              (t && t.description ? '<div class="meta">' + t.description + '</div>' : '') +
-              '<div class="meta">Due: ' + c.due_date + (overdue ? ' &middot; <b style="color:var(--err);">Overdue</b>' : '') + '</div>' +
-              '<button type="button" class="task-done-btn" style="width:100%;margin-top:8px;padding:10px;border:none;border-radius:9px;background:var(--ok);color:#fff;font-weight:800;cursor:pointer;">Mark Done</button>' +
-              '</div>';
-          }).join('') +
-        '</div>';
-
-      el.querySelectorAll('.task-done-btn').forEach(function(btn){
-        btn.addEventListener('click', async function(){
-          const card = btn.closest('.lead-card');
-          const compId = card.getAttribute('data-compid');
-          const comp = pending.find(c => String(c.id) === compId);
-          const delayDays = daysBetween(comp.due_date, todayISO());
-          const status = delayDays > 0 ? 'Delayed' : 'Done';
-          btn.disabled = true; btn.textContent = 'Saving...';
-          await sb.from('task_completions').update({ completed_at: new Date().toISOString(), completed_by: currentUser.name, status: status }).eq('id', compId);
-          loadMyTasks();
-        });
-      });
-    }
 
     window.loadAdminDashboard = async function(){
       adminDashboardPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
