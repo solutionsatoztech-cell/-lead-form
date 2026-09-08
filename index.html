@@ -176,6 +176,16 @@
   .import-msg{font-size:12px;font-weight:700;margin-bottom:10px;text-align:center;min-height:16px;}
   .import-msg.ok{color:var(--ok);}
   .import-msg.err{color:var(--err);}
+
+  .menu-bar{display:flex; gap:2px; margin-top:4px;}
+  .menu-btn{padding:9px 14px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; font-size:13.5px; font-weight:700; cursor:pointer; border-radius:6px 6px 0 0;}
+  .menu-btn:hover, .menu-btn.open{background:#fff; color:var(--navy-dark);}
+  .menu-arrow{font-size:10px; margin-left:4px;}
+  .menu-dropdown{position:absolute; top:100px; z-index:50; background:#fff; border:1px solid var(--line); border-radius:0 8px 8px 8px; box-shadow:0 8px 24px rgba(0,0,0,.18); min-width:220px; padding:4px 0; left:20px;}
+  .menu-item{display:flex; justify-content:space-between; align-items:center; padding:10px 16px; font-size:13.5px; font-weight:600; color:var(--navy-dark); cursor:pointer;}
+  .menu-item:hover{background:var(--navy); color:#fff;}
+  .mi-arrow{color:var(--muted); font-size:15px;}
+  .menu-item:hover .mi-arrow{color:#fff;}
 </style>
 </head>
 <body>
@@ -202,7 +212,33 @@
   <button type="button" class="logout-btn" id="logoutBtn">Logout</button>
   <div class="tag">RPGH &middot; LEAD CAPTURE</div>
   <h1 id="pageTitle">Lead Form</h1>
-  <div class="tabs" id="mainTabs">
+
+  <div class="menu-bar" id="menuBar">
+    <button type="button" class="menu-btn" id="menuTransBtn">Transactions <span class="menu-arrow">&#9662;</span></button>
+    <button type="button" class="menu-btn" id="menuDisplayBtn">Display <span class="menu-arrow">&#9662;</span></button>
+    <button type="button" class="menu-btn hidden" id="menuAdminBtn">Administration <span class="menu-arrow">&#9662;</span></button>
+  </div>
+  <div class="menu-dropdown hidden" id="menuTransDropdown">
+    <div class="menu-item" id="navNewLead"><span>New Lead</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navPurchaseEntry"><span>Purchase Entry</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navSaleEntry"><span>Sale Entry</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navPurchaseOrder"><span>Purchase Order</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navSalesOrder"><span>Sales Order</span><span class="mi-arrow">&#8250;</span></div>
+  </div>
+  <div class="menu-dropdown hidden" id="menuDisplayDropdown">
+    <div class="menu-item" id="navMyDash"><span>My Dashboard</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navCustomers"><span>Customers</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navAdminDash"><span>Admin Dashboard</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navReports"><span>Reports</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navReorder"><span>Reorder</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navAllLeads"><span>All Leads</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navStock"><span>Stock / Items</span><span class="mi-arrow">&#8250;</span></div>
+  </div>
+  <div class="menu-dropdown hidden" id="menuAdminDropdown">
+    <div class="menu-item" id="navUsers"><span>Users</span><span class="mi-arrow">&#8250;</span></div>
+  </div>
+
+  <div class="tabs hidden" id="mainTabs">
     <button type="button" class="tab-btn active" id="tabFormBtn">New Lead</button>
     <button type="button" class="tab-btn" id="tabDashBtn">My Dashboard</button>
     <button type="button" class="tab-btn" id="tabCustomersBtn">Customers</button>
@@ -283,7 +319,7 @@
   </section>
 
   <section id="adminSection" class="hidden">
-    <div class="subtabs" style="flex-wrap:wrap;">
+    <div class="subtabs hidden" style="flex-wrap:wrap;">
       <button type="button" class="subtab-btn active" id="subDashboardBtn">Dashboard</button>
       <button type="button" class="subtab-btn" id="subReportsBtn">Reports</button>
       <button type="button" class="subtab-btn" id="subReorderBtn">Reorder</button>
@@ -329,9 +365,11 @@
     const hasAnyAdminPerm = user.role === 'admin' || user.perm_leads || user.perm_users || user.perm_inventory;
     if (hasAnyAdminPerm) {
       document.getElementById('tabAdminBtn').classList.remove('hidden');
+      document.getElementById('menuAdminBtn').classList.remove('hidden');
     }
     initApp();
     loadDashboard();
+    setupMenuBar();
   }
 
   async function doLogin(){
@@ -421,8 +459,77 @@
     });
   }
 
+  let menuBarWired = false;
+  function setupMenuBar(){
+    if (menuBarWired) return;
+    menuBarWired = true;
+
+    const menuTransBtn = document.getElementById('menuTransBtn');
+    const menuDisplayBtn = document.getElementById('menuDisplayBtn');
+    const menuAdminBtn = document.getElementById('menuAdminBtn');
+    const menuTransDropdown = document.getElementById('menuTransDropdown');
+    const menuDisplayDropdown = document.getElementById('menuDisplayDropdown');
+    const menuAdminDropdown = document.getElementById('menuAdminDropdown');
+
+    const allBtns = [menuTransBtn, menuDisplayBtn, menuAdminBtn];
+    const allDropdowns = [menuTransDropdown, menuDisplayDropdown, menuAdminDropdown];
+
+    function closeAllMenus(){
+      allBtns.forEach(b => b.classList.remove('open'));
+      allDropdowns.forEach(d => d.classList.add('hidden'));
+    }
+    function toggleMenu(btn, dropdown){
+      const wasOpen = !dropdown.classList.contains('hidden');
+      closeAllMenus();
+      if (!wasOpen) {
+        btn.classList.add('open');
+        dropdown.classList.remove('hidden');
+        const rect = btn.getBoundingClientRect();
+        dropdown.style.left = rect.left + 'px';
+      }
+    }
+    menuTransBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuTransBtn, menuTransDropdown); });
+    menuDisplayBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuDisplayBtn, menuDisplayDropdown); });
+    menuAdminBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuAdminBtn, menuAdminDropdown); });
+    document.addEventListener('click', closeAllMenus);
+
+    function navTo(ids){
+      let i = 0;
+      function next(){
+        if (i >= ids.length) return;
+        const el = document.getElementById(ids[i]);
+        if (el) el.click();
+        i++;
+        setTimeout(next, 60);
+      }
+      next();
+    }
+
+    function wireNav(elId, chain){
+      document.getElementById(elId).addEventListener('click', function(){
+        closeAllMenus();
+        navTo(chain);
+      });
+    }
+
+    wireNav('navNewLead', ['tabFormBtn']);
+    wireNav('navPurchaseEntry', ['tabAdminBtn', 'subInventoryBtn', 'invSubPurchaseBtn']);
+    wireNav('navSaleEntry', ['tabAdminBtn', 'subInventoryBtn', 'invSubSalesBtn']);
+    wireNav('navPurchaseOrder', ['tabAdminBtn', 'subInventoryBtn', 'invSubPOBtn']);
+    wireNav('navSalesOrder', ['tabAdminBtn', 'subInventoryBtn', 'invSubSOBtn']);
+
+    wireNav('navMyDash', ['tabDashBtn']);
+    wireNav('navCustomers', ['tabCustomersBtn']);
+    wireNav('navAdminDash', ['tabAdminBtn', 'subDashboardBtn']);
+    wireNav('navReports', ['tabAdminBtn', 'subReportsBtn']);
+    wireNav('navReorder', ['tabAdminBtn', 'subReorderBtn']);
+    wireNav('navAllLeads', ['tabAdminBtn', 'subLeadsBtn']);
+    wireNav('navStock', ['tabAdminBtn', 'subInventoryBtn', 'invSubItemsBtn']);
+
+    wireNav('navUsers', ['tabAdminBtn', 'subUsersBtn']);
+  }
+
   function initApp(){
-    if (appInitialized) return;
     appInitialized = true;
 
     const tabFormBtn = document.getElementById('tabFormBtn');
