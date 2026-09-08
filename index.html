@@ -551,14 +551,31 @@
     menuAdminBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuAdminBtn, menuAdminDropdown); });
     document.addEventListener('click', closeAllMenus);
 
+    let navToken = 0;
     function navTo(ids){
+      const myToken = ++navToken;
       let i = 0;
       function next(){
+        if (myToken !== navToken) return;
         if (i >= ids.length) return;
-        const el = document.getElementById(ids[i]);
-        if (el) el.click();
-        i++;
-        setTimeout(next, 60);
+        const id = ids[i];
+        let attempts = 0;
+        function tryClick(){
+          if (myToken !== navToken) return;
+          const el = document.getElementById(id);
+          if (el) {
+            el.click();
+            i++;
+            setTimeout(next, 40);
+          } else if (attempts < 60) {
+            attempts++;
+            setTimeout(tryClick, 50);
+          } else {
+            i++;
+            next();
+          }
+        }
+        tryClick();
       }
       next();
     }
@@ -973,11 +990,11 @@
       adminDashboardPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
       const [{ data: leads }, { data: items }, { data: allTxns }, { data: pOrders }, { data: sOrders }] = await Promise.all([
-        sb.from('leads').select('*'),
-        sb.from('inventory').select('*'),
-        sb.from('stock_transactions').select('*'),
-        sb.from('purchase_orders').select('*'),
-        sb.from('sales_orders').select('*')
+        sb.from('leads').select('status'),
+        sb.from('inventory').select('id, item_name, reorder_level, unit_price'),
+        sb.from('stock_transactions').select('item_id, type, quantity'),
+        sb.from('purchase_orders').select('item_id, vendor, ordered_qty, received_qty, status'),
+        sb.from('sales_orders').select('item_id, customer_name, ordered_qty, delivered_qty, status')
       ]);
 
       const totalLeads = (leads || []).length;
@@ -1045,8 +1062,8 @@
       adminReorderPanel.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
 
       const [{ data: items }, { data: allTxns }] = await Promise.all([
-        sb.from('inventory').select('*'),
-        sb.from('stock_transactions').select('*')
+        sb.from('inventory').select('id, item_name, sku_code, item_group, reorder_level, unit_price, supplier'),
+        sb.from('stock_transactions').select('item_id, type, quantity, vendor, created_at')
       ]);
 
       const stockMap = {};
@@ -1989,7 +2006,7 @@
 
       const [{ data, error }, { data: txns }] = await Promise.all([
         sb.from('inventory').select('*').order('item_name'),
-        sb.from('stock_transactions').select('*')
+        sb.from('stock_transactions').select('item_id, type, quantity')
       ]);
       const listEl = document.getElementById('itemsList');
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
@@ -2268,10 +2285,10 @@
     el.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading business snapshot...</p>';
 
     const [{ data: items }, { data: allTxns }, { data: pOrders }, { data: sOrders }] = await Promise.all([
-      sb.from('inventory').select('*'),
-      sb.from('stock_transactions').select('*'),
-      sb.from('purchase_orders').select('*'),
-      sb.from('sales_orders').select('*')
+      sb.from('inventory').select('id, item_name, reorder_level, supplier'),
+      sb.from('stock_transactions').select('item_id, type, quantity'),
+      sb.from('purchase_orders').select('item_id, vendor, ordered_qty, received_qty, status').neq('status', 'Completed'),
+      sb.from('sales_orders').select('item_id, customer_name, ordered_qty, delivered_qty, status').neq('status', 'Completed')
     ]);
 
     const stockMap = {};
