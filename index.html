@@ -726,6 +726,7 @@
   }
 
   let navToken = 0;
+  let focusEntryMode = null; // when set (e.g. 'purchase-order'), shows just that single entry screen, hiding the surrounding tab bars — used when the user jumps straight in via the Transactions menu.
   function navTo(ids){
     const myToken = ++navToken;
     let i = 0;
@@ -791,18 +792,19 @@
     menuAdminBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleMenu(menuAdminBtn, menuAdminDropdown); });
     document.addEventListener('click', closeAllMenus);
 
-    function wireNav(elId, chain){
+    function wireNav(elId, chain, focusKey){
       document.getElementById(elId).addEventListener('click', function(){
         closeAllMenus();
+        focusEntryMode = focusKey || null;
         navTo(chain);
       });
     }
 
     wireNav('navNewLead', ['tabFormBtn']);
-    wireNav('navPurchaseEntry', ['tabAdminBtn', 'subInventoryBtn', 'invSubPurchaseBtn']);
-    wireNav('navSaleEntry', ['tabAdminBtn', 'subInventoryBtn', 'invSubSalesBtn']);
-    wireNav('navPurchaseOrder', ['tabAdminBtn', 'subInventoryBtn', 'invSubPOBtn']);
-    wireNav('navSalesOrder', ['tabAdminBtn', 'subInventoryBtn', 'invSubSOBtn']);
+    wireNav('navPurchaseEntry', ['tabAdminBtn', 'subInventoryBtn'], 'purchase');
+    wireNav('navSaleEntry', ['tabAdminBtn', 'subInventoryBtn'], 'sales');
+    wireNav('navPurchaseOrder', ['tabAdminBtn', 'subInventoryBtn'], 'po');
+    wireNav('navSalesOrder', ['tabAdminBtn', 'subInventoryBtn'], 'so');
 
     wireNav('navMyDash', ['tabDashBtn']);
     wireNav('navCustomers', ['tabCustomersBtn']);
@@ -2181,8 +2183,10 @@
     }
 
     window.loadAdminInventory = function(){
+      const inFocus = !!focusEntryMode && ['purchase', 'sales', 'po', 'so'].includes(focusEntryMode);
       adminInventoryPanel.innerHTML =
-        '<div class="subtabs" style="flex-wrap:wrap;">' +
+        (inFocus ? '<button type="button" id="invBackToAllBtn" class="icon-btn" style="margin-bottom:10px;">&larr; All Inventory</button>' : '') +
+        '<div class="subtabs" style="flex-wrap:wrap;' + (inFocus ? 'display:none;' : '') + '">' +
           '<button type="button" class="subtab-btn active" id="invSubItemsBtn">Items</button>' +
           '<button type="button" class="subtab-btn" id="invSubPurchaseBtn">Purchases</button>' +
           '<button type="button" class="subtab-btn" id="invSubSalesBtn">Sales</button>' +
@@ -2194,6 +2198,13 @@
         '<div id="invSalesPanel" class="hidden"></div>' +
         '<div id="invPOPanel" class="hidden"></div>' +
         '<div id="invSOPanel" class="hidden"></div>';
+
+      if (inFocus) {
+        document.getElementById('invBackToAllBtn').addEventListener('click', function(){
+          focusEntryMode = null;
+          loadAdminInventory();
+        });
+      }
 
       const invItemsBtn = document.getElementById('invSubItemsBtn');
       const invPurchaseBtn = document.getElementById('invSubPurchaseBtn');
@@ -2220,7 +2231,9 @@
       invSalesBtn.addEventListener('click', function(){ activateInvSub('sales'); });
       invPOBtn.addEventListener('click', function(){ activateInvSub('po'); });
       invSOBtn.addEventListener('click', function(){ activateInvSub('so'); });
-      activateInvSub('items');
+
+      const focusMap = { purchase: 'purchase', sales: 'sales', po: 'po', so: 'so' };
+      activateInvSub(inFocus ? focusMap[focusEntryMode] : 'items');
     };
 
     async function loadOrders(kind){
