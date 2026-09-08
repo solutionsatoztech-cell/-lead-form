@@ -2162,8 +2162,9 @@
 
         if (!rows.length) { alert('Add at least one item with a valid quantity'); return; }
 
+        const groupId = 'ORD-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
         const entries = rows.map(function(r){
-          const entry = { item_id: r.item_id, ordered_qty: r.qty, note: note, created_by: currentUser.name, status: 'Open' };
+          const entry = { item_id: r.item_id, ordered_qty: r.qty, note: note, created_by: currentUser.name, status: 'Open', order_group: groupId };
           if (kind === 'purchase') entry.vendor = party; else entry.customer_name = party;
           return entry;
         });
@@ -2256,43 +2257,72 @@
             return;
           }
 
-          const itemsHtml = filteredOrders.map(function(o){
-            const it = itemsById2[o.item_id];
-            const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
-            const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
-            const party = kind === 'purchase' ? o.vendor : o.customer_name;
-            const d = o.created_at ? new Date(o.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
-            const dispatchTxt = o.dispatch_date
-              ? ('Dispatched: ' + new Date(o.dispatch_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }))
-              : 'Not dispatched yet';
-            const statusClass = o.status === 'Completed' ? 'ok' : (o.status === 'Partial' ? 'watch' : 'low');
-            return '<div class="reorder-item priority-' + (o.status === 'Completed' ? '' : statusClass) + '" data-orderid="' + o.id + '" style="' + (o.status === 'Completed' ? 'border-left-color:var(--ok);' : '') + '">' +
+          // Group rows that were submitted together (same order_group).
+          // Rows with no group (older data, or imported rows) each form their own group of one.
+          const groups = [];
+          const groupIndex = {};
+          filteredOrders.forEach(function(o){
+            const key = o.order_group || ('single-' + o.id);
+            if (!(key in groupIndex)) {
+              groupIndex[key] = groups.length;
+              groups.push([]);
+            }
+            groups[groupIndex[key]].push(o);
+          });
+          // Keep groups sorted by their most recent order's created_at (already ordered since filteredOrders is sorted desc)
+
+          const groupsHtml = groups.map(function(groupOrders){
+            const first = groupOrders[0];
+            const party = kind === 'purchase' ? first.vendor : first.customer_name;
+            const d = first.created_at ? new Date(first.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }) : '';
+            const allCompleted = groupOrders.every(o => o.status === 'Completed');
+            const anyPartial = groupOrders.some(o => o.status === 'Partial' || o.status === 'Completed');
+            const groupStatus = allCompleted ? 'Completed' : (anyPartial ? 'Partial' : 'Open');
+            const statusClass = groupStatus === 'Completed' ? 'ok' : (groupStatus === 'Partial' ? 'watch' : 'low');
+
+            const itemRowsHtml = groupOrders.map(function(o){
+              const it = itemsById2[o.item_id];
+              const fulfilled = Number(kind === 'purchase' ? o.received_qty : o.delivered_qty) || 0;
+              const pending = Math.max((Number(o.ordered_qty)||0) - fulfilled, 0);
+              const dispatchTxt = o.dispatch_date
+                ? ('Dispatched: ' + new Date(o.dispatch_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' }))
+                : 'Not dispatched yet';
+              return '<div class="order-line-item" data-orderid="' + o.id + '" style="border-top:1px solid var(--line);padding:10px 0;">' +
+                '<div class="r-top" style="margin-bottom:6px;">' +
+                  '<div class="r-name" style="font-size:13.5px;">' + (it ? it.item_name : 'Item') + '</div>' +
+                  '<span class="priority-badge" style="' + (o.status === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : (o.status === 'Partial' ? 'background:#FFF6DA;color:#9A7B00;' : 'background:#FFE9CC;color:var(--amber-dark);')) + '">' + o.status + '</span>' +
+                '</div>' +
+                '<div class="reorder-metrics">' +
+                  '<div class="reorder-metric"><div class="rm-num">' + o.ordered_qty + '</div><div class="rm-lbl">Ordered</div></div>' +
+                  '<div class="reorder-metric"><div class="rm-num">' + fulfilled + '</div><div class="rm-lbl">' + (kind === 'purchase' ? 'Received' : 'Delivered') + '</div></div>' +
+                  '<div class="reorder-metric"><div class="rm-num">' + pending + '</div><div class="rm-lbl">Pending</div></div>' +
+                '</div>' +
+                '<div class="reorder-vendor" style="font-size:11.5px;">' + dispatchTxt + '</div>' +
+                (pending > 0 ?
+                  '<div class="quick-purchase-row">' +
+                    '<input type="number" class="convert-qty" placeholder="Qty ' + (kind === 'purchase' ? 'received' : 'delivered') + ' now" value="' + pending + '">' +
+                    '<button type="button" class="convert-btn">Convert to ' + (kind === 'purchase' ? 'Purchase' : 'Sale') + '</button>' +
+                  '</div>'
+                  : '<div class="reorder-vendor" style="color:var(--ok);font-weight:700;">Fully completed</div>') +
+                '<div class="lead-msg"></div>' +
+              '</div>';
+            }).join('');
+
+            return '<div class="reorder-item priority-' + (groupStatus === 'Completed' ? '' : statusClass) + '" style="' + (groupStatus === 'Completed' ? 'border-left-color:var(--ok);' : '') + '">' +
               '<div class="r-top">' +
-                '<div><div class="r-name">' + (it ? it.item_name : 'Item') + '</div><div class="r-sku">' + (party || 'No name') + ' &middot; Order Date: ' + d + '</div></div>' +
-                '<span class="priority-badge ' + (o.status === 'Completed' ? 'watch' : statusClass) + '" style="' + (o.status === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : '') + '">' + o.status + '</span>' +
+                '<div><div class="r-name">' + (party || 'No name') + '</div><div class="r-sku">' + groupOrders.length + ' item(s) &middot; Order Date: ' + d + ' &middot; Taken by: ' + (first.created_by || 'Unknown') + '</div></div>' +
+                '<span class="priority-badge ' + (groupStatus === 'Completed' ? 'watch' : statusClass) + '" style="' + (groupStatus === 'Completed' ? 'background:#DCF3DE;color:var(--ok);' : '') + '">' + groupStatus + '</span>' +
               '</div>' +
-              '<div class="reorder-metrics">' +
-                '<div class="reorder-metric"><div class="rm-num">' + o.ordered_qty + '</div><div class="rm-lbl">Ordered</div></div>' +
-                '<div class="reorder-metric"><div class="rm-num">' + fulfilled + '</div><div class="rm-lbl">' + (kind === 'purchase' ? 'Received' : 'Delivered') + '</div></div>' +
-                '<div class="reorder-metric"><div class="rm-num">' + pending + '</div><div class="rm-lbl">Pending</div></div>' +
-              '</div>' +
-              '<div class="reorder-vendor">Taken by: <b>' + (o.created_by || 'Unknown') + '</b> &middot; ' + dispatchTxt + '</div>' +
-              (o.note ? '<div class="reorder-vendor">' + o.note + '</div>' : '') +
-              (pending > 0 ?
-                '<div class="quick-purchase-row">' +
-                  '<input type="number" class="convert-qty" placeholder="Qty ' + (kind === 'purchase' ? 'received' : 'delivered') + ' now" value="' + pending + '">' +
-                  '<button type="button" class="convert-btn">Convert to ' + (kind === 'purchase' ? 'Purchase' : 'Sale') + '</button>' +
-                '</div>'
-                : '<div class="reorder-vendor" style="color:var(--ok);font-weight:700;">Fully completed</div>') +
-              '<div class="lead-msg"></div>' +
+              (first.note ? '<div class="reorder-vendor">' + first.note + '</div>' : '') +
+              itemRowsHtml +
             '</div>';
           }).join('');
 
-          wrap.innerHTML = summaryHtml + itemsHtml;
+          wrap.innerHTML = summaryHtml + groupsHtml;
 
           wrap.querySelectorAll('.convert-btn').forEach(function(btn){
             btn.addEventListener('click', async function(){
-              const card = btn.closest('.reorder-item');
+              const card = btn.closest('.order-line-item');
               const orderId = card.getAttribute('data-orderid');
               const order = orders.find(o => String(o.id) === orderId);
               const qtyNow = Number(card.querySelector('.convert-qty').value);
