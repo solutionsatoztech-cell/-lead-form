@@ -514,20 +514,16 @@
     loginBtn.textContent = 'Checking...';
     loginMsg.textContent = '';
 
-    const { data, error } = await sb
-      .from('users')
-      .select('name, mobile, email, department, role, perm_leads, perm_users, perm_inventory')
-      .eq('login_id', id)
-      .eq('password', pass)
-      .maybeSingle();
+    const { data, error } = await sb.rpc('verify_login', { p_login_id: id, p_password: pass });
 
     loginBtn.disabled = false;
     loginBtn.textContent = 'Login';
 
     if (error) { loginMsg.textContent = 'Error: ' + error.message; return; }
-    if (!data) { loginMsg.textContent = 'Invalid Login ID or Password'; return; }
-    localStorage.setItem('leadapp_user', JSON.stringify(data));
-    showApp(data);
+    if (!data || !data.length) { loginMsg.textContent = 'Invalid Login ID or Password'; return; }
+    const user = data[0];
+    localStorage.setItem('leadapp_user', JSON.stringify(user));
+    showApp(user);
   }
 
   loginBtn.addEventListener('click', doLogin);
@@ -646,7 +642,7 @@
         { data: steps }, { data: leadLog }
       ] = await Promise.all([
         sb.from('leads').select('*'),
-        sb.from('users').select('*'),
+        sb.from('users').select('id, name, mobile, email, department, branch, login_id, role, perm_leads, perm_users, perm_inventory, perm_items, perm_purchases, perm_sales, perm_purchase_orders, perm_sales_orders, perm_reorder'),
         sb.from('inventory').select('*'),
         sb.from('stock_transactions').select('*'),
         sb.from('purchase_orders').select('*'),
@@ -2260,7 +2256,7 @@
         '<button type="button" class="add-btn" id="addUserBtn">+ Add New User</button><div id="usersList"></div>';
       document.getElementById('addUserBtn').addEventListener('click', function(){ showUserForm(null); });
 
-      const { data, error } = await sb.from('users').select('*').order('name');
+      const { data, error } = await sb.from('users').select('id, name, mobile, email, department, branch, login_id, role, perm_leads, perm_users, perm_inventory, perm_items, perm_purchases, perm_sales, perm_purchase_orders, perm_sales_orders, perm_reorder').order('name');
       const listEl = document.getElementById('usersList');
       if (error) { listEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
 
@@ -2350,7 +2346,7 @@
         '</div>' +
         '<div class="row2">' +
           '<div class="field-block"><span class="mini-label">Login ID</span><input type="text" class="f-login" placeholder="Login ID" value="' + (user?.login_id||'') + '"></div>' +
-          '<div class="field-block"><span class="mini-label">Password</span><input type="text" class="f-pass" placeholder="Password" value="' + (user?.password||'') + '"></div>' +
+          '<div class="field-block"><span class="mini-label">Password</span><input type="text" class="f-pass" placeholder="' + (user ? 'Leave blank to keep current password' : 'Password') + '"></div>' +
         '</div>' +
         '<div class="field-block" style="margin-bottom:8px;">' +
           '<span class="mini-label">Rights (what this user can access)</span>' +
@@ -2362,18 +2358,19 @@
         '</div>';
       target.querySelector('.f-cancel').addEventListener('click', function(){ target.innerHTML=''; if(!slotEl) target.remove(); });
       target.querySelector('.f-save').addEventListener('click', async function(){
+        const passVal = target.querySelector('.f-pass').value.trim();
         const payload = {
           name: target.querySelector('.f-name').value.trim(),
           mobile: target.querySelector('.f-mobile').value.trim(),
           department: target.querySelector('.f-dept').value.trim(),
           branch: target.querySelector('.f-branch').value.trim(),
           login_id: target.querySelector('.f-login').value.trim(),
-          password: target.querySelector('.f-pass').value.trim(),
           perm_leads: target.querySelector('.f-perm-leads').checked,
           perm_users: target.querySelector('.f-perm-users').checked,
           perm_inventory: target.querySelector('.f-perm-inventory').checked
         };
-        if (!payload.name || !payload.login_id || !payload.password) { alert('Name, Login ID and Password are required'); return; }
+        if (passVal) payload.password = passVal;
+        if (!payload.name || !payload.login_id || (!user && !passVal)) { alert('Name, Login ID and Password are required'); return; }
         if (user) {
           await sb.from('users').update(payload).eq('id', user.id);
         } else {
