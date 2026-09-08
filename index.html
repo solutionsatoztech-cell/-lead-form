@@ -864,6 +864,16 @@
       productSelect.innerHTML = '<option value="">-- Select --</option>' +
         items.map(it => '<option value="' + it.name + '">' + it.name + ' (Stock: ' + it.stock + ')</option>').join('');
     }
+    function showDropdownError(selectEl, retryFn){
+      selectEl.innerHTML = '<option value="">-- Tap to retry loading --</option>';
+      selectEl.style.borderColor = 'var(--err)';
+      selectEl.onclick = function(){
+        selectEl.onclick = null;
+        selectEl.style.borderColor = '';
+        selectEl.innerHTML = '<option>Loading...</option>';
+        retryFn();
+      };
+    }
     productSelect.addEventListener('change', function(){
       const item = itemsListGlobal.find(it => it.name === productSelect.value);
       if (!item || !item.department) return;
@@ -886,24 +896,44 @@
       phoneHistoryEl.innerHTML = '<div class="history-box"><div class="htitle">Existing Customer &mdash; ' + data.length + ' previous lead(s)</div>' + rows + '</div>';
     });
 
-    async function loadUsers(){
-      const { data } = await sb.from('users').select('name, mobile, email, department, role');
-      if (data) fillAssignDropdown(data);
+    async function loadUsers(attempt){
+      attempt = attempt || 1;
+      try {
+        const { data, error } = await sb.from('users').select('name, mobile, email, department, role');
+        if (error) throw error;
+        if (data) fillAssignDropdown(data);
+      } catch (e) {
+        if (attempt < 3) {
+          setTimeout(function(){ loadUsers(attempt + 1); }, 1500);
+        } else {
+          showDropdownError(assignSelect, function(){ loadUsers(1); });
+        }
+      }
     }
-    async function loadItems(){
-      const [{ data: items }, { data: txns }] = await Promise.all([
-        sb.from('inventory').select('id, item_name, department'),
-        sb.from('stock_transactions').select('item_id, type, quantity')
-      ]);
-      if (items) {
-        const stockMap = {};
-        (txns || []).forEach(function(t){
-          const q = Number(t.quantity) || 0;
-          stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
-        });
-        fillProductDropdown(items.map(function(r){
-          return { name: r.item_name, stock: stockMap[r.id] || 0, department: r.department };
-        }));
+    async function loadItems(attempt){
+      attempt = attempt || 1;
+      try {
+        const [{ data: items, error: e1 }, { data: txns, error: e2 }] = await Promise.all([
+          sb.from('inventory').select('id, item_name, department'),
+          sb.from('stock_transactions').select('item_id, type, quantity')
+        ]);
+        if (e1 || e2) throw (e1 || e2);
+        if (items) {
+          const stockMap = {};
+          (txns || []).forEach(function(t){
+            const q = Number(t.quantity) || 0;
+            stockMap[t.item_id] = (stockMap[t.item_id] || 0) + (t.type === 'sale' ? -q : q);
+          });
+          fillProductDropdown(items.map(function(r){
+            return { name: r.item_name, stock: stockMap[r.id] || 0, department: r.department };
+          }));
+        }
+      } catch (e) {
+        if (attempt < 3) {
+          setTimeout(function(){ loadItems(attempt + 1); }, 1500);
+        } else {
+          showDropdownError(productSelect, function(){ loadItems(1); });
+        }
       }
     }
     async function loadSteps(){
@@ -1320,7 +1350,12 @@
       if (!el) return;
       el.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading your tasks...</p>';
 
-      await ensureDueTaskCompletions(currentUser.name);
+      try {
+        await ensureDueTaskCompletions(currentUser.name);
+      } catch (e) {
+        el.innerHTML = '';
+        return;
+      }
 
       const { data: myTasks } = await sb.from('tasks').select('id, title, description, frequency').eq('assigned_to', currentUser.name).eq('is_active', true);
       if (!myTasks || !myTasks.length) { el.innerHTML = ''; return; }
@@ -2786,12 +2821,21 @@
     });
   }
 
-  async function loadDashboard(){
+  async function loadDashboard(attempt){
     if (!currentUser) return;
+    attempt = attempt || 1;
     const dashList = document.getElementById('dashList');
     if (dashList) dashList.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
     const { data, error } = await sb.from('leads').select('*').eq('assigned_to', currentUser.name).order('created_at', { ascending: false });
-    if (!error && window.renderDashboard) window.renderDashboard(data || []);
+    if (!error) {
+      if (window.renderDashboard) window.renderDashboard(data || []);
+    } else if (attempt < 3) {
+      setTimeout(function(){ loadDashboard(attempt + 1); }, 1500);
+    } else if (dashList) {
+      dashList.innerHTML = '<div class="card"><p style="text-align:center;color:var(--err);margin:0 0 10px;">Could not load your leads. Check your connection.</p><button type="button" id="dashRetryBtn" style="width:100%;padding:10px;border:none;border-radius:9px;background:var(--navy);color:#fff;font-weight:700;cursor:pointer;">Retry</button></div>';
+      const retryBtn = document.getElementById('dashRetryBtn');
+      if (retryBtn) retryBtn.addEventListener('click', function(){ loadDashboard(1); });
+    }
   }
 
   if ('serviceWorker' in navigator) {
