@@ -244,6 +244,7 @@
   </div>
   <div class="menu-dropdown hidden" id="menuAdminDropdown">
     <div class="menu-item" id="navUsers"><span>Users</span><span class="mi-arrow">&#8250;</span></div>
+    <div class="menu-item" id="navMasters"><span>Masters</span><span class="mi-arrow">&#8250;</span></div>
     <div class="menu-item" id="navBackup"><span>Backup All Data</span><span class="mi-arrow">&#8250;</span></div>
   </div>
 
@@ -334,6 +335,7 @@
       <button type="button" class="subtab-btn" id="subReorderBtn">Reorder</button>
       <button type="button" class="subtab-btn" id="subLeadsBtn">All Leads</button>
       <button type="button" class="subtab-btn" id="subUsersBtn">Users</button>
+      <button type="button" class="subtab-btn" id="subMastersBtn">Masters</button>
       <button type="button" class="subtab-btn" id="subInventoryBtn">Inventory</button>
     </div>
 
@@ -342,6 +344,7 @@
     <div id="adminReorderPanel" class="hidden"></div>
     <div id="adminLeadsPanel" class="hidden"></div>
     <div id="adminUsersPanel" class="hidden"></div>
+    <div id="adminMastersPanel" class="hidden"></div>
     <div id="adminInventoryPanel" class="hidden"></div>
   </section>
 
@@ -607,6 +610,7 @@
     wireNav('navStock', ['tabAdminBtn', 'subInventoryBtn', 'invSubItemsBtn']);
 
     wireNav('navUsers', ['tabAdminBtn', 'subUsersBtn']);
+    wireNav('navMasters', ['tabAdminBtn', 'subMastersBtn']);
 
     document.getElementById('navBackup').addEventListener('click', function(){
       closeAllMenus();
@@ -949,22 +953,25 @@
     const subReorderBtn = document.getElementById('subReorderBtn');
     const subLeadsBtn = document.getElementById('subLeadsBtn');
     const subUsersBtn = document.getElementById('subUsersBtn');
+    const subMastersBtn = document.getElementById('subMastersBtn');
     const subInventoryBtn = document.getElementById('subInventoryBtn');
     const adminDashboardPanel = document.getElementById('adminDashboardPanel');
     const adminReportsPanel = document.getElementById('adminReportsPanel');
     const adminReorderPanel = document.getElementById('adminReorderPanel');
     const adminLeadsPanel = document.getElementById('adminLeadsPanel');
     const adminUsersPanel = document.getElementById('adminUsersPanel');
+    const adminMastersPanel = document.getElementById('adminMastersPanel');
     const adminInventoryPanel = document.getElementById('adminInventoryPanel');
 
     function activateSub(which){
-      [subDashboardBtn, subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
-      [adminDashboardPanel, adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
+      [subDashboardBtn, subReportsBtn, subReorderBtn, subLeadsBtn, subUsersBtn, subMastersBtn, subInventoryBtn].forEach(b => b.classList.remove('active'));
+      [adminDashboardPanel, adminReportsPanel, adminReorderPanel, adminLeadsPanel, adminUsersPanel, adminMastersPanel, adminInventoryPanel].forEach(p => p.classList.add('hidden'));
       if (which === 'dashboard') { subDashboardBtn.classList.add('active'); adminDashboardPanel.classList.remove('hidden'); loadAdminDashboard(); }
       if (which === 'reports') { subReportsBtn.classList.add('active'); adminReportsPanel.classList.remove('hidden'); loadAdminReports(); }
       if (which === 'reorder') { subReorderBtn.classList.add('active'); adminReorderPanel.classList.remove('hidden'); loadAdminReorder(); }
       if (which === 'leads') { subLeadsBtn.classList.add('active'); adminLeadsPanel.classList.remove('hidden'); loadAdminLeads(); }
       if (which === 'users') { subUsersBtn.classList.add('active'); adminUsersPanel.classList.remove('hidden'); loadAdminUsers(); }
+      if (which === 'masters') { subMastersBtn.classList.add('active'); adminMastersPanel.classList.remove('hidden'); loadAdminMasters(); }
       if (which === 'inventory') { subInventoryBtn.classList.add('active'); adminInventoryPanel.classList.remove('hidden'); loadAdminInventory(); }
     }
     subDashboardBtn.addEventListener('click', function(){ activateSub('dashboard'); });
@@ -972,6 +979,7 @@
     subReorderBtn.addEventListener('click', function(){ activateSub('reorder'); });
     subLeadsBtn.addEventListener('click', function(){ activateSub('leads'); });
     subUsersBtn.addEventListener('click', function(){ activateSub('users'); });
+    subMastersBtn.addEventListener('click', function(){ activateSub('masters'); });
     subInventoryBtn.addEventListener('click', function(){ activateSub('inventory'); });
 
     function setupAdminSubtabs(){
@@ -984,11 +992,149 @@
       subReorderBtn.classList.toggle('hidden', !canInventory);
       subLeadsBtn.classList.toggle('hidden', !canLeads);
       subUsersBtn.classList.toggle('hidden', !canUsers);
+      subMastersBtn.classList.toggle('hidden', !isAdmin);
       subInventoryBtn.classList.toggle('hidden', !canInventory);
       if (isAdmin) activateSub('dashboard');
       else if (canInventory) activateSub('reorder');
       else if (canLeads) activateSub('leads');
       else if (canUsers) activateSub('users');
+    }
+
+    window.loadAdminMasters = function(){
+      adminMastersPanel.innerHTML =
+        '<div class="subtabs" style="flex-wrap:wrap;">' +
+          '<button type="button" class="subtab-btn active" id="mstPartyBtn">Party</button>' +
+          '<button type="button" class="subtab-btn" id="mstItemGroupBtn">Item Group</button>' +
+          '<button type="button" class="subtab-btn" id="mstPartyGroupBtn">Party Group</button>' +
+          '<button type="button" class="subtab-btn" id="mstBranchBtn">Branch</button>' +
+        '</div>' +
+        '<div id="mstPartyPanel"></div>' +
+        '<div id="mstItemGroupPanel" class="hidden"></div>' +
+        '<div id="mstPartyGroupPanel" class="hidden"></div>' +
+        '<div id="mstBranchPanel" class="hidden"></div>';
+
+      const mstPartyBtn = document.getElementById('mstPartyBtn');
+      const mstItemGroupBtn = document.getElementById('mstItemGroupBtn');
+      const mstPartyGroupBtn = document.getElementById('mstPartyGroupBtn');
+      const mstBranchBtn = document.getElementById('mstBranchBtn');
+      const mstPartyPanel = document.getElementById('mstPartyPanel');
+      const mstItemGroupPanel = document.getElementById('mstItemGroupPanel');
+      const mstPartyGroupPanel = document.getElementById('mstPartyGroupPanel');
+      const mstBranchPanel = document.getElementById('mstBranchPanel');
+
+      function activateMst(which){
+        [mstPartyBtn, mstItemGroupBtn, mstPartyGroupBtn, mstBranchBtn].forEach(b => b.classList.remove('active'));
+        [mstPartyPanel, mstItemGroupPanel, mstPartyGroupPanel, mstBranchPanel].forEach(p => p.classList.add('hidden'));
+        if (which === 'party') { mstPartyBtn.classList.add('active'); mstPartyPanel.classList.remove('hidden'); loadPartyMaster(); }
+        if (which === 'itemgroup') { mstItemGroupBtn.classList.add('active'); mstItemGroupPanel.classList.remove('hidden'); loadSimpleMaster('item_groups', mstItemGroupPanel, 'Item Group'); }
+        if (which === 'partygroup') { mstPartyGroupBtn.classList.add('active'); mstPartyGroupPanel.classList.remove('hidden'); loadSimpleMaster('party_groups', mstPartyGroupPanel, 'Party Group'); }
+        if (which === 'branch') { mstBranchBtn.classList.add('active'); mstBranchPanel.classList.remove('hidden'); loadSimpleMaster('branches', mstBranchPanel, 'Branch'); }
+      }
+      mstPartyBtn.addEventListener('click', function(){ activateMst('party'); });
+      mstItemGroupBtn.addEventListener('click', function(){ activateMst('itemgroup'); });
+      mstPartyGroupBtn.addEventListener('click', function(){ activateMst('partygroup'); });
+      mstBranchBtn.addEventListener('click', function(){ activateMst('branch'); });
+      activateMst('party');
+    };
+
+    async function loadSimpleMaster(table, panelEl, label){
+      panelEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+      const { data, error } = await sb.from(table).select('*').order('name');
+      if (error) { panelEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
+
+      const formHtml =
+        '<div class="card" style="padding:14px;">' +
+          '<span class="mini-label">Add ' + label + '</span>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<input type="text" id="mstNewName" placeholder="' + label + ' name">' +
+            '<button type="button" class="add-btn" id="mstAddBtn" style="flex:0 0 auto;">+ Add</button>' +
+          '</div>' +
+        '</div>';
+
+      const listHtml = (data || []).length
+        ? (data || []).map(function(r){
+            return '<div class="admin-item" data-id="' + r.id + '"><div class="row"><div class="title">' + r.name + '</div>' +
+              '<div class="btns"><button type="button" class="icon-btn danger mst-del">Delete</button></div></div></div>';
+          }).join('')
+        : '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No ' + label.toLowerCase() + 's yet.</p></div>';
+
+      panelEl.innerHTML = formHtml + listHtml;
+
+      document.getElementById('mstAddBtn').addEventListener('click', async function(){
+        const name = document.getElementById('mstNewName').value.trim();
+        if (!name) { alert('Enter a name'); return; }
+        await sb.from(table).insert({ name: name });
+        loadSimpleMaster(table, panelEl, label);
+      });
+      panelEl.querySelectorAll('.mst-del').forEach(function(b){
+        b.addEventListener('click', async function(){
+          if (!confirm('Delete this ' + label.toLowerCase() + '?')) return;
+          const id = b.closest('.admin-item').getAttribute('data-id');
+          await sb.from(table).delete().eq('id', id);
+          loadSimpleMaster(table, panelEl, label);
+        });
+      });
+    }
+
+    async function loadPartyMaster(){
+      const panelEl = document.getElementById('mstPartyPanel');
+      panelEl.innerHTML = '<p style="text-align:center;color:#7C8B99;">Loading...</p>';
+      const [{ data, error }, { data: pGroups }, { data: brs }] = await Promise.all([
+        sb.from('parties').select('*').order('name'),
+        sb.from('party_groups').select('name').order('name'),
+        sb.from('branches').select('name').order('name')
+      ]);
+      if (error) { panelEl.innerHTML = '<p style="color:red;">' + error.message + '</p>'; return; }
+
+      const groupOptions = '<option value="">-- No Group --</option>' + (pGroups || []).map(g => '<option value="' + g.name + '">' + g.name + '</option>').join('');
+      const branchOptions = '<option value="">-- No Branch --</option>' + (brs || []).map(b => '<option value="' + b.name + '">' + b.name + '</option>').join('');
+
+      const formHtml =
+        '<div class="card" style="padding:14px;">' +
+          '<span class="mini-label">Add Party (Customer/Vendor)</span>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<input type="text" id="pName" placeholder="Party Name">' +
+            '<input type="text" id="pPhone" placeholder="Phone">' +
+          '</div>' +
+          '<div class="row2" style="margin-top:8px;">' +
+            '<select id="pType"><option value="Both">Both</option><option value="Customer">Customer</option><option value="Vendor">Vendor</option></select>' +
+            '<select id="pGroup">' + groupOptions + '</select>' +
+          '</div>' +
+          '<select id="pBranch" style="margin-top:8px;">' + branchOptions + '</select>' +
+          '<button type="button" class="add-btn" id="pSaveBtn" style="margin-top:8px;">+ Add Party</button>' +
+        '</div>';
+
+      const listHtml = (data || []).length
+        ? (data || []).map(function(p){
+            return '<div class="admin-item" data-id="' + p.id + '"><div class="row"><div>' +
+              '<div class="title">' + p.name + '</div>' +
+              '<div class="sub">' + (p.type||'Both') + (p.party_group ? (' &middot; ' + p.party_group) : '') + (p.phone ? (' &middot; ' + p.phone) : '') + (p.branch ? (' &middot; ' + p.branch) : '') + '</div>' +
+              '</div><div class="btns"><button type="button" class="icon-btn danger p-del">Delete</button></div></div></div>';
+          }).join('')
+        : '<div class="card"><p style="text-align:center;color:#7C8B99;margin:0;">No parties yet.</p></div>';
+
+      panelEl.innerHTML = formHtml + listHtml;
+
+      document.getElementById('pSaveBtn').addEventListener('click', async function(){
+        const name = document.getElementById('pName').value.trim();
+        if (!name) { alert('Enter party name'); return; }
+        await sb.from('parties').insert({
+          name: name,
+          phone: document.getElementById('pPhone').value.trim(),
+          type: document.getElementById('pType').value,
+          party_group: document.getElementById('pGroup').value,
+          branch: document.getElementById('pBranch').value
+        });
+        loadPartyMaster();
+      });
+      panelEl.querySelectorAll('.p-del').forEach(function(b){
+        b.addEventListener('click', async function(){
+          if (!confirm('Delete this party?')) return;
+          const id = b.closest('.admin-item').getAttribute('data-id');
+          await sb.from('parties').delete().eq('id', id);
+          loadPartyMaster();
+        });
+      });
     }
 
     window.loadAdminDashboard = async function(){
