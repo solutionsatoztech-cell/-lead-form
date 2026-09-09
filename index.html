@@ -8,7 +8,6 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Lead Form</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{
     --navy:#1B5E20; --navy-dark:#0F3D12; --amber:#43A047; --amber-dark:#2E7D32;
@@ -441,6 +440,84 @@
     showOnScreenError('Promise Error: ' + msg);
   });
 
+  // ===== Robust loader for the Supabase JS library =====
+  // A plain <script src="..."> tag has no timeout: if the CDN is slow
+  // or blocked on the user's network, the browser just waits forever
+  // and nothing below ever runs (dropdowns stay stuck on "Loading...",
+  // no console error, no on-screen error). This loader adds a timeout
+  // and a fallback CDN, and only starts the app once the library is
+  // actually available — or shows a clear retry message if it never is.
+  function loadScriptWithTimeout(src, timeoutMs){
+    return new Promise(function(resolve, reject){
+      const tag = document.createElement('script');
+      let done = false;
+      const timer = setTimeout(function(){
+        if (done) return;
+        done = true;
+        tag.remove();
+        reject(new Error('Timed out loading ' + src));
+      }, timeoutMs);
+      tag.src = src;
+      tag.onload = function(){
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      tag.onerror = function(){
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        tag.remove();
+        reject(new Error('Failed to load ' + src));
+      };
+      document.head.appendChild(tag);
+    });
+  }
+
+  function showLibraryLoadError(retryFn){
+    let el = document.getElementById('libLoadErrorBanner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'libLoadErrorBanner';
+      el.style.cssText = 'position:fixed;inset:0;background:#F4FAF4;z-index:999998;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;font-family:Arial, sans-serif;';
+      el.innerHTML =
+        '<div style="font-size:40px;margin-bottom:12px;">📶</div>' +
+        '<div style="font-weight:800;font-size:16px;color:#1A2530;margin-bottom:8px;">Page load nahi ho paya</div>' +
+        '<div style="font-size:13px;color:#7C8B99;margin-bottom:18px;max-width:320px;">Internet dheema hai ya network isko block kar raha hai. Retry dabayein ya WiFi/mobile data switch karke try karein.</div>' +
+        '<button id="libLoadRetryBtn" style="background:#1B5E20;color:#fff;border:none;border-radius:8px;padding:12px 28px;font-weight:700;font-size:14px;">Retry</button>';
+      document.body.appendChild(el);
+    } else {
+      el.style.display = 'flex';
+    }
+    document.getElementById('libLoadRetryBtn').onclick = function(){
+      el.remove();
+      retryFn();
+    };
+  }
+
+  function loadSupabaseLib(){
+    return loadScriptWithTimeout('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js', 6000)
+      .catch(function(){
+        showOnScreenError('Primary CDN slow/blocked, trying fallback CDN...');
+        return loadScriptWithTimeout('https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js', 6000);
+      });
+  }
+
+  function bootApp(){
+    loadSupabaseLib().then(function(){
+      if (typeof supabase === 'undefined') {
+        showLibraryLoadError(bootApp);
+        return;
+      }
+      initApp();
+    }).catch(function(e){
+      showOnScreenError('Library load failed: ' + e.message);
+      showLibraryLoadError(bootApp);
+    });
+  }
+
+  function initApp(){
   const SUPABASE_URL = "https://wnorbyaeikvusdzesbkt.supabase.co";
   const SUPABASE_KEY = "sb_publishable_l9_ENeEmiv59DJta1I8BGA_b7W7PXWV";
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -3532,6 +3609,9 @@
       if (retryBtn) retryBtn.addEventListener('click', function(){ loadDashboard(1); });
     }
   }
+  } // end initApp
+
+  bootApp();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('service-worker.js').catch(function(){});
